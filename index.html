@@ -256,6 +256,46 @@ const TRAITS=[
   {k:'driven',   l:'Driven',    e:'🔥'},
 ];
 
+// Acquirable traits — gained through life events, nudge main stats each year,
+// can be inherited by children, and can be added/removed via doctors/therapy/activities.
+// nudge: per-year drift applied to stats. under: which main stat it lives "under" in the UI.
+const ACQ_TRAITS=[
+  {k:'handsome',    l:'Strikingly Attractive', e:'😍', under:'looks',    good:true, nudge:{looks:1.2}, heritable:true},
+  {k:'plain',       l:'Plain-Looking',         e:'😐', under:'looks',    good:false,nudge:{looks:-0.8}},
+  {k:'confident',   l:'Confident',             e:'😎', under:'happy',    good:true, nudge:{happy:0.8}, heritable:true},
+  {k:'anxious',     l:'Anxious',               e:'😰', under:'happy',    good:false,nudge:{happy:-0.9,health:-0.2}},
+  {k:'fearful',     l:'Fearful',               e:'😱', under:'happy',    good:false,nudge:{happy:-0.7}},
+  {k:'brave',       l:'Brave',                 e:'🦁', under:'athletic', good:true, nudge:{happy:0.3}, heritable:true},
+  {k:'genius',      l:'Brilliant',             e:'🧠', under:'smarts',   good:true, nudge:{smarts:1.3}, heritable:true},
+  {k:'slow_learner',l:'Slow Learner',          e:'🐢', under:'smarts',   good:false,nudge:{smarts:-0.7}},
+  {k:'athletic_gift',l:'Natural Athlete',      e:'🏆', under:'athletic', good:true, nudge:{athletic:1.2}, heritable:true},
+  {k:'frail',       l:'Frail',                 e:'🍂', under:'health',   good:false,nudge:{health:-0.9}},
+  {k:'robust',      l:'Iron Constitution',     e:'💪', under:'health',   good:true, nudge:{health:0.9}, heritable:true},
+  {k:'charismatic', l:'Charismatic',           e:'✨', under:'fame',     good:true, nudge:{fame:0.5,happy:0.3}, heritable:true},
+  {k:'awkward',     l:'Socially Awkward',      e:'😬', under:'happy',    good:false,nudge:{happy:-0.5}},
+  {k:'optimist',    l:'Optimist',              e:'🌅', under:'happy',    good:true, nudge:{happy:1.0,health:0.2}, heritable:true},
+  {k:'pessimist',   l:'Pessimist',             e:'🌧', under:'happy',    good:false,nudge:{happy:-0.8}},
+  {k:'disciplined', l:'Disciplined',           e:'🎯', under:'smarts',   good:true, nudge:{smarts:0.5,health:0.3}, heritable:true},
+  {k:'reckless',    l:'Reckless',              e:'🎲', under:'health',   good:false,nudge:{health:-0.5,happy:0.3}},
+  {k:'creative',    l:'Creative',              e:'🎨', under:'smarts',   good:true, nudge:{smarts:0.4,happy:0.4}, heritable:true},
+  {k:'hot_temper',  l:'Hot-Tempered',          e:'🌋', under:'happy',    good:false,nudge:{happy:-0.4}},
+  {k:'gifted_looks',l:'Aging Gracefully',      e:'🌹', under:'looks',    good:true, nudge:{looks:0.6}, heritable:true},
+];
+const ACQ=k=>ACQ_TRAITS.find(t=>t.k===k);
+function hasTrait(p,k){ return p.acqTraits && p.acqTraits.includes(k); }
+function addTrait(p,k,silent){
+  if(!p.acqTraits) p.acqTraits=[];
+  if(p.acqTraits.includes(k)) return false;
+  // a new trait can cancel its opposite
+  const opposites={confident:'anxious',anxious:'confident',optimist:'pessimist',pessimist:'optimist',brave:'fearful',fearful:'brave',handsome:'plain',plain:'handsome',robust:'frail',frail:'robust',genius:'slow_learner',slow_learner:'genius'};
+  if(opposites[k] && p.acqTraits.includes(opposites[k])) p.acqTraits=p.acqTraits.filter(x=>x!==opposites[k]);
+  p.acqTraits.push(k);
+  const t=ACQ(k);
+  if(!silent && t) log(`${p.first} ${t.good?'developed a wonderful trait':'picked up a difficult trait'}: ${t.l}.`, t.good?'good':'muted');
+  return true;
+}
+function removeTrait(p,k){ if(p.acqTraits) p.acqTraits=p.acqTraits.filter(x=>x!==k); }
+
 /* ---------------- careers ----------------
    tier gates by education; pay grows with years */
 const CAREERS=[
@@ -427,7 +467,7 @@ const CAREER=k=>CAREERS.find(c=>c.k===k);
 
 // High-school clubs: joining gives yearly stat growth + a head-start flag for matching careers
 // Superpowers — granted to heroes and villains, expanding as they rise
-const POWERS=['super strength','flight','telepathy','invisibility','energy blasts','super speed','telekinesis','elemental control','shapeshifting','regeneration','technopathy','time manipulation','force fields','mind control'];
+const POWERS=['super strength','flight','telepathy','invisibility','energy blasts','super speed','telekinesis','elemental control','shapeshifting','regeneration','technopathy','time manipulation','force fields','mind control','weather control','phasing','duplication','magnetism','sonic scream','laser vision'];
 function grantPower(p){
   if(!p.powers) p.powers=[];
   const avail=POWERS.filter(x=>!p.powers.includes(x));
@@ -435,6 +475,11 @@ function grantPower(p){
   const pow=pick(avail); p.powers.push(pow);
   return pow;
 }
+// generate a comic-book alias for villains and nemeses
+const VILLAIN_PREFIX=['Doctor','Lord','The','Baron','Mister','Madame','Professor','Captain','King','Lady'];
+const VILLAIN_CORE=['Venom','Shadow','Chaos','Inferno','Mortis','Riddle','Void','Vex','Carnage','Cipher','Dread','Sable','Hex','Onyx','Specter','Malice','Grim','Toxin','Pyre','Wraith','Vortex','Blight'];
+const VILLAIN_SUFFIX=['','','','','the Cruel','the Mad','the Merciless','Prime','X','the Unbroken'];
+function villainName(){ const a=chance(55)?pick(VILLAIN_PREFIX)+' ':''; const b=pick(VILLAIN_CORE); const c=pick(VILLAIN_SUFFIX); return (a+b+(c?' '+c:'')).trim(); }
 
 const CLUBS=[
   {k:'choir',    l:'Choir',          emoji:'🎶', stat:'fame',     boost:2, helps:'musician', flag:'club_choir',   blurb:'singing chops'},
@@ -504,6 +549,10 @@ function blankPerson(opt={}){
     securityLevel:0,   // 0 normal, 1 max security, 2 superprison (the Vault)
     escapeAttempts:0,  // bribes/escapes tried at current incarceration
     powers:[],         // superpowers (hero/villain)
+    nemesis:null,      // {name, defeated} — hero's archenemy
+    henchman:null,     // {name, loyalty} — villain's minion
+    heat:0,            // villain notoriety/police attention
+    acqTraits:[],      // acquired traits (handsome, anxious, genius...) that nudge stats
     rels: opt.rels ?? [],   // {name,kind,sex,bond,alive,id}
     childrenIds: [],
     parentIds: opt.parentIds ?? [],
@@ -575,6 +624,10 @@ function migrate(){
     if(p.securityLevel==null) p.securityLevel=0;
     if(p.escapeAttempts==null) p.escapeAttempts=0;
     if(!p.powers) p.powers=[];
+    if(p.nemesis===undefined) p.nemesis=null;
+    if(p.henchman===undefined) p.henchman=null;
+    if(p.heat==null) p.heat=0;
+    if(!p.acqTraits) p.acqTraits=[];
     if(p.q==null) p.q=0;
     if(p.greek==null) p.greek=null;
     if(p.collegeSport==null) p.collegeSport=null;
@@ -937,6 +990,11 @@ function runYear(){
   p.stats.looks = clamp(p.stats.looks + (p.age>35?-0.5:p.age<25?0.3:0) + rndDrift(1));
   if(p.stats.fame>0) p.stats.fame=clamp(p.stats.fame*0.94,0,100); // fame fades
 
+  // acquired-trait nudges
+  if(p.acqTraits && p.acqTraits.length){
+    p.acqTraits.forEach(tk=>{ const t=ACQ(tk); if(t&&t.nudge){ for(const s in t.nudge){ p.stats[s]=clamp(p.stats[s]+t.nudge[s]); } } });
+  }
+
   // income
   if(p.job!=='none' && p.alive){
     runJob(p);
@@ -1144,10 +1202,12 @@ function runJob(p){
         `${p.first} held a city hostage with a doomsday device.`,
         `${p.first}'s heist drained the national reserve.`,
         `${p.first} unleashed chaos across the capital.`]), {fear:true}); }
-      // bust chance this year, reduced by sly trait, raised by stage
-      let bust=st.bust + (p.traits.includes('sly')?-4:0) - (p.traits.includes('lucky')?3:0);
+      // bust chance this year, reduced by sly trait, raised by stage and accumulated heat
+      let bust=st.bust + (p.traits.includes('sly')?-4:0) - (p.traits.includes('lucky')?3:0) + Math.floor((p.heat||0)/10);
       if(c.evil) bust=Math.round(bust*0.55); // costumed villains evade capture more easily
       bust=Math.max(2,bust);
+      // heat slowly cools each year
+      if(p.heat>0) p.heat=Math.max(0, p.heat-5);
       if(chance(bust)){
         // caught — sentence scales with how deep they were
         const tier=p._stage;
@@ -1535,6 +1595,116 @@ const CHOICE_EVENTS = [
       {label:'Public school', sub:'+grit, +friends', effect:p=>{ fx(p,{happy:4,athletic:2}); setFlag(p,'publicSchool'); return `${p.first} went to the local public school. Real-world, and full of life.`;}},
       {label:'Homeschool', sub:'+smarts, -social', effect:p=>{ fx(p,{smarts:6,happy:-3}); setFlag(p,'homeschool'); return `${p.first}'s parents taught them at home. Bright, but a little sheltered.`;}},
     ]},
+  // ---------- MORE CHILDHOOD: outings, parties, friendships, mishaps ----------
+  { id:'mall_trip', emoji:'🛍', title:'A trip to the mall', 
+    when:p=>p.age>=5&&p.age<=14, weight:2,
+    body:p=>`${p.first} is at the mall with the family. There's an arcade, a toy store, and a food court calling.`,
+    choices:[
+      {label:'Beg for a toy', sub:'maybe +joy', effect:p=>{ if(chance(55)){ fx(p,{happy:8}); return `${p.first} wore the parents down and got the toy. Victory!`;} fx(p,{happy:-4}); return `No toy today. ${p.first} sulked through the food court.`;}},
+      {label:'Hit the arcade', sub:'+joy', effect:p=>{ fx(p,{happy:7}); if(chance(30)){addTrait(p,'confident');} return `${p.first} dominated the arcade and felt like a champion.`;}},
+      {label:'Wander off exploring', sub:'risky', effect:p=>`${p.first} slips away to explore on their own…`,
+        then:p=>({ emoji:'😨', title:'Lost in the mall', body:q=>`${q.first} turns around and the family is nowhere in sight. The mall feels enormous.`,
+          choices:[
+            {label:'Find a security guard', sub:'+smarts', effect:q=>{ fx(q,{smarts:4,happy:2}); if(chance(40))addTrait(q,'confident'); return `${q.first} calmly found help and was reunited. Proud of themselves.`;}},
+            {label:'Panic and cry', sub:'-joy', effect:q=>{ fx(q,{happy:-8}); if(chance(45))addTrait(q,'anxious'); return `${q.first} froze in tears until a stranger helped. It was terrifying.`;}},
+            {label:'Keep looking yourself', sub:'+grit, risky', effect:q=>{ if(chance(55)){fx(q,{athletic:2,happy:2});addTrait(q,'brave');return `${q.first} retraced their steps and found the family. Brave little explorer.`;} fx(q,{happy:-6});addTrait(q,'fearful');return `${q.first} got more lost before being found. Shaken.`;}},
+          ]})},
+    ]},
+  { id:'left_behind', emoji:'🚗', title:'Left behind!', once:true,
+    when:p=>p.age>=4&&p.age<=12, weight:1.6,
+    body:p=>`In the chaos of a big family gathering, everyone piled into the cars and drove off — without ${p.first}. They're alone on the porch.`,
+    choices:[
+      {label:'Throw a screaming tantrum', sub:'-joy', effect:p=>{ fx(p,{happy:-8}); if(chance(50))addTrait(p,'hot_temper'); return `${p.first} screamed the house down until a panicked relative raced back.`;}},
+      {label:'Stay calm and wait', sub:'+maturity', effect:p=>{ fx(p,{smarts:3,happy:-2}); if(chance(45))addTrait(p,'confident'); return `${p.first} sat quietly and waited. They were fine. Remarkably mature.`;}},
+      {label:'Try to walk home', sub:'risky', effect:p=>{ if(chance(50)){fx(p,{athletic:2});addTrait(p,'brave');return `${p.first} actually made it most of the way before the family found them, frantic.`;} fx(p,{happy:-6});addTrait(p,'fearful');return `${p.first} got turned around and scared before being found.`;}},
+    ]},
+  { id:'birthday_party', emoji:'🎂', title:'The birthday party', 
+    when:p=>p.age>=5&&p.age<=12, weight:2.5,
+    body:p=>`It's ${p.first}'s birthday party. The whole class was invited, the cake is ready… and then it's time for games.`,
+    choices:[
+      {label:'Be the center of attention', sub:'+fame, +joy', effect:p=>{ fx(p,{happy:9,fame:3}); if(chance(55))addTrait(p,'charismatic'); return `${p.first} soaked up every second. A born showman.`;}},
+      {label:'Share the spotlight', sub:'+friends, +kind', effect:p=>{ fx(p,{happy:6}); const f=addFriend(p); if(chance(50))addTrait(p,'optimist'); return `${p.first} made sure everyone had fun. ${f.name.split(' ')[0]} became a close friend.`;}},
+      {label:'Get overwhelmed and hide', sub:'-joy', effect:p=>{ fx(p,{happy:-5}); if(chance(40))addTrait(p,'awkward'); return `${p.first} got overwhelmed by the crowd and hid in their room.`;}},
+      {label:'Cry because someone got a bigger slice', sub:'tantrum', effect:p=>{ fx(p,{happy:-3}); if(chance(55))addTrait(p,'hot_temper'); return `${p.first} melted down over cake politics. Classic.`;}},
+    ]},
+  { id:'party_invite', emoji:'🎈', title:'A classmate\'s party', 
+    when:p=>p.age>=6&&p.age<=13, weight:2,
+    body:p=>`${p.first} got invited to a popular kid's birthday party. It's a chance to make friends — or feel out of place.`,
+    choices:[
+      {label:'Go and be social', sub:'+friends', effect:p=>{ if(chance(65)){ const f=addFriend(p); fx(p,{happy:7}); return `${p.first} hit it off with ${f.name.split(' ')[0]} and felt like they belonged.`;} fx(p,{happy:-3}); if(chance(50))addTrait(p,'awkward'); return `${p.first} stood awkwardly by the snacks the whole time.`;}},
+      {label:'Bring the best gift', sub:'-$, +status', effect:p=>{ fx(p,{happy:4,fame:2}); if(p._familyMoney)p._familyMoney=Math.max(0,p._familyMoney-200); return `${p.first}'s gift was the hit of the party. Instant cred.`;}},
+      {label:'Stay home', sub:'+smarts', effect:p=>{ fx(p,{smarts:2,happy:-2}); return `${p.first} skipped it. Parties aren't really their thing.`;}},
+    ]},
+  { id:'best_friend', emoji:'🫂', title:'A true best friend', once:true,
+    when:p=>p.age>=6&&p.age<=15, weight:2.5,
+    body:p=>`${p.first} has grown close with one kid in particular. They could become true best friends — the kind that lasts.`,
+    choices:[
+      {label:'Become inseparable', sub:'+joy, lifelong bond', effect:p=>{ const f=addFriend(p); f.bond=92; f.note='best friend'; fx(p,{happy:12}); setFlag(p,'hasBestFriend'); if(chance(50))addTrait(p,'optimist'); return `${p.first} and ${f.name.split(' ')[0]} became inseparable best friends.`;}},
+      {label:'Keep them at arm\'s length', sub:'+independence', effect:p=>{ fx(p,{happy:-2,smarts:2}); return `${p.first} stayed guarded. Friendships are complicated.`;}},
+    ]},
+  { id:'friend_betrayal', emoji:'💔', title:'A friend turns', 
+    when:p=>p.age>=8&&p.age<=16 && p.rels.some(r=>r.kind==='Friend'&&r.alive), weight:1.6,
+    body:p=>{const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); return `${f.name.split(' ')[0]} spread a nasty rumor about ${p.first} behind their back.`;},
+    choices:[
+      {label:'Confront them', sub:'brave', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(f)f.bond=clamp(f.bond-20); fx(p,{happy:-2}); if(chance(40))addTrait(p,'confident'); return `${p.first} called them out in front of everyone. The friendship's over, but respect earned.`;}},
+      {label:'Forgive them', sub:'+kind', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(f)f.bond=clamp(f.bond-5); fx(p,{happy:2}); if(chance(50))addTrait(p,'optimist'); return `${p.first} chose to forgive. Bigger person, even if it stung.`;}},
+      {label:'Plot quiet revenge', sub:'sly', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(f)f.bond=clamp(f.bond-12); fx(p,{happy:1}); setFlag(p,'prankster'); return `${p.first} got even, quietly and thoroughly.`;}},
+      {label:'Withdraw and brood', sub:'-joy', effect:p=>{ fx(p,{happy:-8}); if(chance(45))addTrait(p,'pessimist'); return `${p.first} pulled inward and trusted people a little less after that.`;}},
+    ]},
+  { id:'talent_show', emoji:'🎤', title:'The school talent show', 
+    when:p=>p.age>=7&&p.age<=15&&p.inSchool, weight:2,
+    body:p=>`There's a talent show coming up. ${capFirst(p.first)} could get up on stage in front of everyone.`,
+    choices:[
+      {label:'Perform your heart out', sub:'risky, +fame', effect:p=>{ if(p.stats.looks>50||p.stats.fame>10||chance(50)){ fx(p,{fame:10,happy:8}); addTrait(p,'confident'); return `${p.first} brought the house down. A star is born.`;} fx(p,{happy:-6}); if(chance(40))addTrait(p,'awkward'); return `${p.first} froze on stage. Mortifying.`;}},
+      {label:'Help backstage', sub:'+smarts', effect:p=>{ fx(p,{smarts:3,happy:3}); if(chance(45))addTrait(p,'creative'); return `${p.first} ran the show from behind the curtain. The unsung hero.`;}},
+      {label:'Just watch', sub:'safe', effect:p=>{ fx(p,{happy:2}); return `${p.first} cheered from the audience.`;}},
+    ]},
+  { id:'pet_responsibility', emoji:'🐹', title:'A class pet to care for', 
+    when:p=>p.age>=7&&p.age<=12, weight:1.6,
+    body:p=>`${p.first} got picked to take the class hamster home for the weekend. A big responsibility.`,
+    choices:[
+      {label:'Take great care of it', sub:'+responsibility', effect:p=>{ fx(p,{happy:6,smarts:2}); if(chance(55))addTrait(p,'disciplined'); return `${p.first} cared for the hamster perfectly. The teacher was impressed.`;}},
+      {label:'Get distracted and forget', sub:'-joy', effect:p=>{ if(chance(40)){ fx(p,{happy:-10}); if(chance(40))addTrait(p,'anxious'); return `Disaster — the hamster escaped. ${p.first} felt awful for weeks.`;} fx(p,{happy:-2}); return `${p.first} nearly forgot to feed it, but caught it in time. Phew.`;}},
+    ]},
+  { id:'summer_camp', emoji:'🏕', title:'Summer camp', once:true,
+    when:p=>p.age>=8&&p.age<=14, weight:2,
+    body:p=>`${p.first}'s parents are sending them to sleepaway camp for two weeks. New kids, no parents.`,
+    choices:[
+      {label:'Embrace the adventure', sub:'+grit, +friends', effect:p=>{ fx(p,{athletic:5,happy:6}); const f=addFriend(p); if(chance(40))addTrait(p,'brave'); return `${p.first} thrived at camp and made a friend in ${f.name.split(' ')[0]}.`;}},
+      {label:'Get homesick', sub:'-joy', effect:p=>{ fx(p,{happy:-6}); if(chance(40))addTrait(p,'anxious'); return `${p.first} cried for home every night, but made it through.`;}},
+      {label:'Become the camp prankster', sub:'+joy, trouble', effect:p=>{ fx(p,{happy:7}); setFlag(p,'prankster'); return `${p.first} short-sheeted every bunk in the cabin. A camp legend.`;}},
+    ]},
+  { id:'allowance_lesson', emoji:'🪙', title:'First allowance', once:true,
+    when:p=>p.age>=7&&p.age<=12, weight:1.6,
+    body:p=>`${p.first} just started getting an allowance. The whole sum is burning a hole in their pocket.`,
+    choices:[
+      {label:'Save every penny', sub:'+discipline', effect:p=>{ fx(p,{smarts:3,money:50}); if(chance(40))addTrait(p,'disciplined'); return `${p.first} squirreled it all away. A future investor.`;}},
+      {label:'Spend it all on candy', sub:'+joy', effect:p=>{ fx(p,{happy:6,health:-2}); return `${p.first} blew it all on candy and regretted nothing.`;}},
+      {label:'Buy a gift for someone', sub:'+kind', effect:p=>{ fx(p,{happy:5}); if(chance(55))addTrait(p,'optimist'); return `${p.first} spent it on a gift for a family member. Sweet kid.`;}},
+    ]},
+  { id:'sick_day', emoji:'🤒', title:'A bad sickness', 
+    when:p=>p.age>=3&&p.age<=14, weight:1.5,
+    body:p=>`${p.first} has come down with something nasty — high fever, the works.`,
+    choices:[
+      {label:'Rest and recover at home', sub:'+health back', effect:p=>{ fx(p,{health:-4,happy:2}); return `${p.first} spent a week on the couch with soup and cartoons. Better soon.`;}},
+      {label:'Push through it', sub:'risky', effect:p=>{ if(chance(45)){ fx(p,{health:-12}); if(chance(55))addTrait(p,'frail'); return `${p.first} got much sicker by ignoring it. A hard lesson.`;} fx(p,{health:-3}); if(chance(45))addTrait(p,'robust'); return `${p.first} toughed it out and bounced back fast.`;}},
+    ]},
+  { id:'reading_passion', emoji:'📚', title:'A spark of passion', 
+    when:p=>p.age>=7&&p.age<=14, weight:1.6,
+    body:p=>`${p.first} has discovered something they love — books, science, art, something that lights them up.`,
+    choices:[
+      {label:'Dive in completely', sub:'+smarts', effect:p=>{ fx(p,{smarts:7}); if(chance(40))addTrait(p,pick(['genius','creative','disciplined'])); return `${p.first} fell headfirst into their new passion. It will shape them.`;}},
+      {label:'Balance it with play', sub:'+joy, +smarts', effect:p=>{ fx(p,{smarts:3,happy:4}); return `${p.first} kept it fun, a little of everything.`;}},
+      {label:'Lose interest', sub:'nothing', effect:p=>{ return `${p.first}'s interest fizzled after a few weeks. On to the next thing.`;}},
+    ]},
+  { id:'standing_up', emoji:'✊', title:'A moment of courage', 
+    when:p=>p.age>=8&&p.age<=16, weight:1.6,
+    body:p=>`${p.first} sees a smaller kid being picked on. Nobody else is doing anything.`,
+    choices:[
+      {label:'Step in to help', sub:'brave', effect:p=>{ if(p.stats.athletic>45||chance(55)){ fx(p,{happy:6}); addTrait(p,'brave'); setFlag(p,'protector'); return `${p.first} stood up for the kid and the bullies backed off. A defining moment.`;} fx(p,{health:-6,happy:2}); addTrait(p,'brave'); return `${p.first} got shoved around for trying — but did the right thing.`;}},
+      {label:'Tell an adult', sub:'+smarts', effect:p=>{ fx(p,{smarts:2,happy:2}); return `${p.first} got a teacher involved. The smart play.`;}},
+      {label:'Stay out of it', sub:'-joy', effect:p=>{ fx(p,{happy:-4}); if(chance(50))addTrait(p,'pessimist'); return `${p.first} looked away. The guilt lingered.`;}},
+    ]},
   // ---------- TEEN ----------
   { id:'first_party', emoji:'🎈', title:'The first real party', once:true,
     when:p=>p.age>=14&&p.age<=18, weight:3,
@@ -1648,6 +1818,95 @@ const CHOICE_EVENTS = [
       {label:'Become a vigilante', sub:'don the mask', effect:p=>{ takeJobSilent(p,'superhero'); return `${p.first} put on a mask and took to the rooftops. A hero rises.`;}},
       {label:'Call the police instead', sub:'+safety', effect:p=>{ fx(p,{happy:3}); return `${p.first} did the sensible thing and reported it.`;}},
     ]},
+  // ========== HERO EVENTS ==========
+  { id:'hero_nemesis', emoji:'🦹', title:'A nemesis emerges', once:true,
+    when:p=>p.job==='superhero'&&!p.nemesis, weight:8,
+    body:p=>`A new villain has been terrorizing the city, and they've taken a personal interest in ${p.first}. The papers are calling them archenemies.`,
+    choices:[
+      {label:'Accept the rivalry', sub:'a destined duel', effect:p=>{ p.nemesis={name:villainName(),defeated:0}; fx(p,{fame:8}); return `${p.first} now has a true nemesis: ${p.nemesis.name}. The city watches.`;}},
+      {label:'Try to unmask them quietly', sub:'+smarts', effect:p=>{ p.nemesis={name:villainName(),defeated:0}; fx(p,{smarts:4}); if(chance(40)){return `${p.first} learned ${p.nemesis.name}'s secret identity. Knowledge is power.`;} return `The trail went cold. ${p.nemesis.name} remains a mystery.`;}},
+    ]},
+  { id:'hero_showdown', emoji:'💥', title:'The nemesis strikes', 
+    when:p=>p.job==='superhero'&&p.nemesis, weight:3,
+    body:p=>`${p.nemesis.name} has taken hostages downtown and is daring ${p.first} to come stop them. It's a trap, obviously.`,
+    choices:[
+      {label:'Charge in headfirst', sub:'brave, risky', effect:p=>`${p.first} crashes through the skylight…`,
+        then:p=>({ emoji:'🥊', title:'Face to face', body:q=>`${q.nemesis.name} is ready. The fate of the hostages hangs on this fight.`,
+          choices:[
+            {label:'Fight with everything', sub:'power vs power', effect:q=>{ const pw=(q.powers?q.powers.length:0)*12; const win = q.stats.athletic*0.5+pw>55 || chance(50+pw); if(win){ q.nemesis.defeated++; fx(q,{fame:14,happy:10}); worldEvent(q,`${q.first} defeated ${q.nemesis.name} and saved the hostages.`,{hope:true}); if(q.nemesis.defeated>=3){ const beaten=q.nemesis.name; q.nemesis=null; return `${q.first} put ${beaten} behind bars for good. A city breathes easier.`;} return `${q.first} won the day — but ${q.nemesis.name} escaped to scheme again.`;} fx(q,{health:-25,happy:-8}); return `${q.nemesis.name} got the better of ${q.first} this time. The hostages were freed, but barely.`;}},
+            {label:'Outsmart the trap', sub:'+smarts', effect:q=>{ if(q.stats.smarts>60||chance(55)){ q.nemesis.defeated++; fx(q,{fame:10,smarts:3}); return `${q.first} saw the trap coming and turned it on ${q.nemesis.name}. Brilliant.`;} fx(q,{health:-15}); return `The trap sprung anyway. ${q.first} barely escaped.`;}},
+          ]})},
+      {label:'Evacuate civilians first', sub:'+safety, lose the villain', effect:p=>{ fx(p,{fame:6,happy:4}); return `${p.first} got everyone out safely, but ${p.nemesis.name} slipped away in the chaos.`;}},
+      {label:'Ignore the bait', sub:'-fame', effect:p=>{ fx(p,{fame:-6,happy:-5}); return `${p.first} didn't take the bait. The hostages were hurt, and the city is angry.`;}},
+    ]},
+  { id:'hero_dilemma', emoji:'⚖️', title:'An impossible choice', 
+    when:p=>p.job==='superhero'&&p._stage>=2, weight:2,
+    body:p=>`A bomb on a bus, and a child trapped in a burning building, across town. ${capFirst(p.first)} can only reach one in time.`,
+    choices:[
+      {label:'Save the busload', sub:'the many', effect:p=>{ fx(p,{fame:8,happy:-6}); worldEvent(p,`${p.first} saved a busload of people, but couldn't save everyone that night.`,{hope:true}); return `${p.first} saved dozens — and will never forget the one they couldn't reach.`;}},
+      {label:'Save the child', sub:'the one', effect:p=>{ fx(p,{fame:5,happy:-4}); return `${p.first} pulled the child from the flames. The bus… the guilt will linger.`;}},
+      {label:'Try to save both', sub:'long odds', effect:p=>{ if(p.powers&&p.powers.length>=2&&chance(40)){ fx(p,{fame:18,happy:8}); worldEvent(p,`${p.first} pulled off the impossible and saved everyone.`,{hope:true}); return `Somehow — ${p.first} saved them all. A legend is made.`;} fx(p,{health:-20,happy:-12}); return `${p.first} tried for both and nearly died. It went badly.`;}},
+    ]},
+  { id:'hero_recruit', emoji:'🦸', title:'Join the team?', once:true,
+    when:p=>p.job==='superhero'&&p._stage>=3, weight:2,
+    body:p=>`A famous superhero team wants ${p.first} to join their ranks. Fame and firepower — but they'd answer to others.`,
+    choices:[
+      {label:'Join the team', sub:'+fame, +backup', effect:p=>{ setFlag(p,'heroTeam'); fx(p,{fame:20,happy:8}); worldEvent(p,`${p.first} joined the world's greatest superhero team.`,{hope:true}); return `${p.first} is now part of something bigger. The team has their back.`;}},
+      {label:'Stay a lone wolf', sub:'+independence', effect:p=>{ setFlag(p,'loneHero'); fx(p,{happy:5,fame:4}); return `${p.first} works alone. Always has, always will.`;}},
+    ]},
+  { id:'hero_unmask', emoji:'🎭', title:'Your identity at risk', 
+    when:p=>p.job==='superhero'&&p._stage>=2, weight:1.6,
+    body:p=>`A journalist has figured out ${p.first}'s secret identity and is about to publish. Everything could unravel.`,
+    choices:[
+      {label:'Plead with them', sub:'+smarts', effect:p=>{ if(p.stats.charming>50||chance(55)){ fx(p,{happy:2}); return `${p.first} convinced them to bury the story. Identity safe — for now.`;} setFlag(p,'identityExposed'); fx(p,{fame:15,happy:-8}); return `The story ran. The world knows who ${p.first} is now. No more secrets.`;}},
+      {label:'Let it be published', sub:'go public', effect:p=>{ setFlag(p,'identityExposed'); fx(p,{fame:22,happy:-4}); worldEvent(p,`${p.first} revealed their identity to the world.`,{hope:true}); return `${p.first} stepped into the light. Famous, exposed, and free of the lie.`;}},
+      {label:'Scare them off', sub:'-reputation', effect:p=>{ fx(p,{fame:-5}); if(chance(60)){return `${p.first} intimidated the journalist into silence. Effective, if not heroic.`;} setFlag(p,'identityExposed'); return `It backfired — they published out of spite. ${p.first} is exposed.`;}},
+    ]},
+  // ========== VILLAIN EVENTS ==========
+  { id:'villain_scheme', emoji:'🦹', title:'A wicked opportunity', 
+    when:p=>p.job==='villain'&&!p.inPrison, weight:3,
+    body:p=>`${p.first}'s lieutenants have lined up three schemes. Which evil shall it be?`,
+    choices:[
+      {label:'Rob the national gold reserve', sub:'big money, big heat', effect:p=>{ if(chance(55)){ const take=500000+rnd(8000000); fx(p,{money:take,fame:10}); return `${p.first} cracked the reserve — ${money(take)} richer and infamous.`;} fx(p,{health:-10}); p.heat=(p.heat||0)+25; return `The heist went loud. ${p.first} escaped, but the authorities are closing in.`;}},
+      {label:'Build a doomsday device', sub:'+notoriety, +heat', effect:p=>{ setFlag(p,'hasDoomsday'); p.heat=(p.heat||0)+15; worldEvent(p,`${p.first} threatened the world with a doomsday device.`,{fear:true}); fx(p,{fame:14}); return `${p.first} now holds the world hostage. The fear is delicious.`;}},
+      {label:'Corrupt a politician', sub:'+power, subtle', effect:p=>{ if(chance(60)){ setFlag(p,'ownsPolitician'); fx(p,{money:100000+rnd(500000),fame:4}); return `${p.first} now has a senator in their pocket. Power behind the throne.`;} fx(p,{happy:-4}); return `The politician refused and went to the press. Messy.`;}},
+    ]},
+  { id:'villain_henchman', emoji:'🪤', title:'Recruit a henchman', once:true,
+    when:p=>p.job==='villain'&&p._stage>=1, weight:2,
+    body:p=>`Every great villain needs muscle. ${capFirst(p.first)} can recruit a loyal henchman.`,
+    choices:[
+      {label:'Hire a brutal enforcer', sub:'+power', effect:p=>{ p.henchman={name:villainName(),loyalty:60}; fx(p,{fame:4}); return `${p.first} recruited ${p.henchman.name}, a fearsome enforcer.`;}},
+      {label:'Build a robotic minion', sub:'+smarts, loyal', effect:p=>{ p.henchman={name:'Unit-'+(1+rnd(99)),loyalty:100}; fx(p,{smarts:3}); return `${p.first} built ${p.henchman.name}, an utterly loyal machine.`;}},
+      {label:'Work alone', sub:'no liabilities', effect:p=>{ fx(p,{happy:2}); return `${p.first} trusts no one. Solo evil is cleaner.`;}},
+    ]},
+  { id:'villain_betrayal', emoji:'🗡', title:'A henchman wavers', 
+    when:p=>p.job==='villain'&&p.henchman&&p.henchman.loyalty<70, weight:2,
+    body:p=>`${p.henchman.name}'s loyalty is slipping. There are whispers of betrayal.`,
+    choices:[
+      {label:'Make an example of them', sub:'ruthless', effect:p=>{ const n=p.henchman.name; p.henchman=null; fx(p,{fame:4,happy:-2}); setFlag(p,'ruthless'); return `${p.first} dealt with ${n} permanently. The others fell back in line.`;}},
+      {label:'Buy their loyalty', sub:'-$$, +loyalty', effect:p=>{ const cost=Math.min(p.money,50000+rnd(150000)); fx(p,{money:-cost}); p.henchman.loyalty=clamp(p.henchman.loyalty+30); return `${p.first} paid ${p.henchman.name} handsomely. Loyalty restored, for a price.`;}},
+      {label:'Ignore it', sub:'risky', effect:p=>{ if(chance(50)){ const n=p.henchman.name; p.henchman=null; p.heat=(p.heat||0)+20; return `${n} betrayed ${p.first} to the authorities and vanished. The heat rises.`;} return `${p.henchman.name} stayed loyal, this time.`;}},
+    ]},
+  { id:'villain_hero_offer', emoji:'😇', title:'A chance at redemption', 
+    when:p=>p.job==='villain'&&p._stage>=2, weight:1.2,
+    body:p=>`A hero offers ${p.first} a way out: use that genius for good, and the past can be forgiven.`,
+    choices:[
+      {label:'Turn over a new leaf', sub:'become a hero', effect:p=>{ takeJobSilent(p,'superhero'); p.heat=0; clearFlag(p,'hasDoomsday'); fx(p,{happy:14}); worldEvent(p,`The feared ${p.first} renounced villainy and became a hero.`,{hope:true}); return `${p.first} chose redemption. A villain no more.`;}},
+      {label:'Pretend, then betray', sub:'sinister', effect:p=>{ fx(p,{fame:6}); setFlag(p,'ruthless'); return `${p.first} played along just long enough to stab them in the back. Pure villainy.`;}},
+      {label:'Laugh in their face', sub:'committed to evil', effect:p=>{ fx(p,{fame:5,happy:3}); return `${p.first} laughed. Evil it is, then.`;}},
+    ]},
+  { id:'villain_takeover', emoji:'🌍', title:'Bid for world domination', once:true,
+    when:p=>p.job==='villain'&&p._stage>=4&&hasFlag(p,'hasDoomsday'), weight:2,
+    body:p=>`${p.first} stands at the brink. With the doomsday device, they could try to seize control of the entire world.`,
+    choices:[
+      {label:'Make your move', sub:'all or nothing', effect:p=>`${p.first} broadcasts their ultimatum to every screen on Earth…`,
+        then:p=>({ emoji:'👑', title:'The world holds its breath', body:q=>`Heroes and armies mass against ${q.first}. Does the gambit succeed?`,
+          choices:[
+            {label:'Unleash everything', sub:'legendary stakes', effect:q=>{ const odds=20+(q.powers?q.powers.length*8:0)+(q.stats.smarts>80?15:0); if(chance(odds)){ q.ruler={title:'Supreme Overlord',country:'the World'}; fx(q,{fame:40,money:50000000}); worldEvent(q,`${q.first} CONQUERED THE WORLD. A new dark age begins.`,{fear:true}); return `Impossibly, ${q.first} won. The world kneels before its Overlord.`;} q.inPrison=true; q.prisonYears=999; q.lifeSentence=true; q._wasCrime=true; q._villainJailed=true; worldEvent(q,`${q.first}'s bid for world domination was crushed by Earth's heroes.`,{hope:true}); endJob(q); return `The heroes united and stopped ${q.first}. Captured, defeated, and locked in the deepest cell.`;}},
+            {label:'Lose your nerve', sub:'retreat', effect:q=>{ fx(q,{fame:-8,happy:-6}); clearFlag(q,'hasDoomsday'); return `${q.first} hesitated, then fled. The moment — and the legend — slipped away.`;}},
+          ]})},
+      {label:'Hold the world hostage for ransom', sub:'+money', effect:p=>{ const ransom=5000000+rnd(50000000); fx(p,{money:ransom,fame:18}); p.heat=(p.heat||0)+40; worldEvent(p,`${p.first} extorted a fortune from the nations of Earth.`,{fear:true}); return `${p.first} took the ransom — ${money(ransom)} — and lives to scheme another day.`;}},
+    ]},
   // ---------- NIGHTCLUB CHOICE ----------
   { id:'club_night', emoji:'🪩', title:'A wild night out', 
     when:p=>p.age>=18&&p.age<=45, weight:2.5,
@@ -1716,6 +1975,54 @@ const CHOICE_EVENTS = [
               {label:'Surrender now', sub:'cut losses', effect:q=>{ const loss=Math.min(q.money,100+rnd(1000)); fx(q,{money:-loss,health:-10}); return `${q.first} gave up ${money(loss)} and a few bruises.`;}},
             ]};
         }},
+    ]},
+  // ========== MORE GENERAL ADULT EVENTS ==========
+  { id:'midlife_crisis', emoji:'🏍', title:'A midlife crisis', once:true,
+    when:p=>p.age>=40&&p.age<=55, weight:2,
+    body:p=>`${p.first} wakes up wondering where the years went. The urge to do something drastic is strong.`,
+    choices:[
+      {label:'Buy the motorcycle', sub:'-$, +joy', effect:p=>{ const cost=Math.min(p.money,15000); fx(p,{money:-cost,happy:12,health:-2}); return `${p.first} bought a roaring motorcycle and felt 22 again.`;}},
+      {label:'Quit and travel', sub:'big change', effect:p=>{ if(p.job!=='none')endJob(p); fx(p,{happy:16,stress:-20}); return `${p.first} walked away from it all to see the world. No regrets.`;}},
+      {label:'Throw yourself into the gym', sub:'+health', effect:p=>{ fx(p,{health:10,looks:5,athletic:6}); return `${p.first} got into the best shape of their life.`;}},
+      {label:'Ride it out', sub:'+smarts', effect:p=>{ fx(p,{smarts:3,happy:2}); return `${p.first} sat with the feeling and let it pass.`;}},
+    ]},
+  { id:'old_friend_offer', emoji:'📞', title:'An old friend calls', 
+    when:p=>p.age>=25&&p.age<=60, weight:2,
+    body:p=>`An old friend has a "can't-miss" investment and wants ${p.first} in for $10,000.`,
+    choices:[
+      {label:'Invest big', sub:'high risk', need:p=>p.money>=10000, effect:p=>{ fx(p,{money:-10000}); seed(p,3,'friend_invest'); return `${p.first} wired the money and crossed their fingers.`;}},
+      {label:'Politely decline', sub:'safe', effect:p=>{ fx(p,{happy:1}); return `${p.first} passed. The friendship survived.`;}},
+      {label:'Warn them it\'s a scam', sub:'+smarts', effect:p=>{ fx(p,{smarts:2}); return `${p.first} smelled a rat and said so. Time will tell who was right.`;}},
+    ]},
+  { id:'viral_moment', emoji:'📱', title:'A viral moment', once:true,
+    when:p=>p.age>=14&&p.age<=50, weight:1.5,
+    body:p=>`Something ${p.first} did got filmed and it's blowing up online.`,
+    choices:[
+      {label:'Lean into the fame', sub:'+fame', effect:p=>{ fx(p,{fame:18,happy:6}); if(chance(40)){const m=2000+rnd(40000);fx(p,{money:m});return `${p.first} rode the wave into a ${money(m)} brand deal.`;} return `${p.first} became internet-famous overnight.`;}},
+      {label:'Stay private', sub:'+health', effect:p=>{ fx(p,{happy:4,health:2}); return `${p.first} let it blow over. Some things aren't for the world.`;}},
+    ]},
+  { id:'health_scare', emoji:'🩺', title:'A wake-up call', once:true,
+    when:p=>p.age>=45&&p.stats.health<60, weight:2,
+    body:p=>`The doctor sits ${p.first} down. The numbers aren't good. Something has to change.`,
+    choices:[
+      {label:'Overhaul your life', sub:'+health, hard', effect:p=>{ fx(p,{health:14,happy:-3,stress:-10}); if(p.addiction){p.addiction=null;} return `${p.first} cleaned up their act completely. A second chance at life.`;}},
+      {label:'Make small changes', sub:'+a little health', effect:p=>{ fx(p,{health:5}); return `${p.first} made a few changes. Better than nothing.`;}},
+      {label:'Ignore the warning', sub:'risky', effect:p=>{ fx(p,{health:-8}); seed(p,2,'health_neglect'); return `${p.first} brushed it off. The body keeps the score.`;}},
+    ]},
+  { id:'mentor_youth', emoji:'🌱', title:'A chance to give back', 
+    when:p=>p.age>=35&&(p.stats.fame>20||p.money>200000), weight:1.5,
+    body:p=>`A struggling young person reminds ${p.first} of themselves. They could take them under their wing.`,
+    choices:[
+      {label:'Mentor them', sub:'+joy, +legacy', effect:p=>{ fx(p,{happy:10}); setFlag(p,'mentor'); return `${p.first} became a mentor. Pouring into someone else felt like the realest thing in years.`;}},
+      {label:'Write them a check', sub:'-$, +good', effect:p=>{ const give=Math.min(p.money,5000+rnd(20000)); fx(p,{money:-give,happy:5}); return `${p.first} funded their dream and wished them well.`;}},
+      {label:'Too busy', sub:'nothing', effect:p=>{ return `${p.first} let the moment pass. Maybe next time.`;}},
+    ]},
+  { id:'lottery_dream', emoji:'🎟', title:'Feeling lucky', 
+    when:p=>p.age>=18&&p.money<50000, weight:1,
+    body:p=>`The jackpot is enormous this week. ${capFirst(p.first)} could blow a little money on a dream.`,
+    choices:[
+      {label:'Buy a fistful of tickets', sub:'-$, dreams', effect:p=>{ const spend=Math.min(p.money,200); fx(p,{money:-spend}); const r=rnd(1000); if(r<2){ const jp=2000000+rnd(40000000); fx(p,{money:jp,happy:30,fame:8}); return `LIFE-CHANGING. ${p.first} hit the jackpot — ${money(jp)}!`;} if(r<60){ const w=200+rnd(3000); fx(p,{money:w,happy:5}); return `${p.first} won a little — ${money(w)}.`;} fx(p,{happy:-2}); return `Nothing. ${p.first} swears off lottery tickets. Again.`;}},
+      {label:'Save the money', sub:'+smarts', effect:p=>{ fx(p,{smarts:1}); return `${p.first} kept their money. The house always wins, after all.`;}},
     ]},
 ];
 function takeJobSilent(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; p._stage=0; p._stageYears=0; p.jobTitle=c.stages?c.stages[0].t:null; if((c.hero||c.evil)){ const pow=grantPower(p); if(pow) log(`${p.first} discovered a power: ${pow}.`,'big'); } }
@@ -1900,6 +2207,14 @@ function resolvePending(p){
           else if(r<60){ const take=2000+rnd(20000); p.money+=take; log(`${p.first} made some fast, dangerous money with the crew — ${money(take)}.`,'bad'); seed(p,2,'gang_trouble'); }
           else { log(`${p.first} drifted away from the gang before things got worse.`,'muted'); clearFlag(p,'inGang'); }
         }
+        break;
+      case 'friend_invest':
+        if(chance(40)){ const v=20000+rnd(120000); p.money+=v; log(`That investment ${p.first} made paid off big — ${money(v)}.`,'big'); }
+        else if(chance(50)){ log(`The investment ${p.first} made trickled back about even. No harm done.`,'muted'); p.money+=10000; }
+        else { log(`The "can't-miss" deal ${p.first} bought into collapsed. The money's gone.`,'bad'); }
+        break;
+      case 'health_neglect':
+        if(chance(55)){ p.stats.health=clamp(p.stats.health-20); log(`The warning ${p.first} ignored caught up with them. A serious health crisis.`,'bad'); }
         break;
     }
   });
@@ -2473,6 +2788,10 @@ function makeChild(p, opts={}){
     child.stats.smarts=clamp((p.stats.smarts+(50+rnd(30)))/2);
     child.stats.looks=clamp((p.stats.looks+(40+rnd(40)))/2);
     if(p.traits.length) child.traits=[pick(p.traits), pick(TRAITS).k].filter((v,i,a)=>a.indexOf(v)===i);
+    // heritable acquired traits have a chance to pass down
+    if(p.acqTraits && p.acqTraits.length){
+      p.acqTraits.forEach(tk=>{ const t=ACQ(tk); if(t&&t.heritable&&chance(40)) addTrait(child,tk,true); });
+    }
   }
   child.adopted=!!opts.adopted;
   child.fromFling=!!opts.fling;
@@ -2684,6 +3003,21 @@ function openActivities(){
         render();
       }));
     }
+  }
+
+  // HERO / VILLAIN ACTIONS (proactive deeds)
+  if(p.job==='superhero' && !p.inPrison){
+    opts.push(OH('— Heroics —'));
+    opts.push(O('🚨','Patrol the city','+fame, risk of injury',0,()=>{ closeSheet(); if(chance(70)){ p.stats.fame=clamp(p.stats.fame+4); if(chance(30))p.stats.health=clamp(p.stats.health-8); log(`${p.first} stopped a mugging on patrol. The city's a little safer.`,'good'); } else { p.stats.health=clamp(p.stats.health-12); log(`${p.first} got hurt breaking up an armed robbery.`,'bad'); } render(); }));
+    opts.push(O('🔬','Train your powers','+power chance',0,()=>{ closeSheet(); if(chance(30)){ const pow=grantPower(p); if(pow){ log(`${p.first} unlocked a new ability: ${pow}!`,'big'); render(); return; } } p.stats.athletic=clamp(p.stats.athletic+3); log(`${p.first} honed their abilities in secret.`,'good'); render(); }));
+    opts.push(O('🏛','Build a secret lair','-$, +edge',0,()=>{ if(p.money<50000){closeSheet();log(`${p.first} can't afford a proper lair yet.`,'muted');render();return;} p.money-=50000; setFlag(p,'hasLair'); closeSheet(); log(`${p.first} built a hidden headquarters. Every hero needs one.`,'big'); render(); }));
+  }
+  if(p.job==='villain' && !p.inPrison){
+    opts.push(OH('— Villainy —'));
+    opts.push(O('💣','Commit a crime spree',`+money, +heat (${p.heat||0})`,0,()=>{ closeSheet(); const take=20000+rnd(300000); p.money+=take; p.heat=(p.heat||0)+15; p.stats.fame=clamp(p.stats.fame+3); log(`${p.first} went on a crime spree — ${money(take)} richer, and more wanted than ever.`,'bad'); render(); }));
+    opts.push(O('🦹','Recruit minions','build your army',0,()=>{ closeSheet(); if(!p.henchman){ p.henchman={name:villainName(),loyalty:60}; log(`${p.first} recruited ${p.henchman.name} to their cause.`,'good'); } else { p.henchman.loyalty=clamp(p.henchman.loyalty+15); log(`${p.first} strengthened their grip on ${p.henchman.name}.`,'good'); } render(); }));
+    opts.push(O('🌡','Lay low','cool the heat',0,()=>{ closeSheet(); p.heat=Math.max(0,(p.heat||0)-25); p.stats.happy=clamp(p.stats.happy+2); log(`${p.first} went quiet for a while. The authorities lost the trail.`,'muted'); render(); }));
+    opts.push(O('🔬','Build a doomsday device','-$, +terror',0,()=>{ if(p.money<100000){closeSheet();log(`${p.first} lacks the funds for such a device.`,'muted');render();return;} p.money-=100000; setFlag(p,'hasDoomsday'); closeSheet(); worldEvent(p,`${p.first} unveiled a terrifying doomsday device.`,{fear:true}); render(); }));
   }
 
   // FREE TIME EXTRAS (nightlife, social, gambling, crime, etc.)
@@ -2969,6 +3303,35 @@ function openHealth(){
     log(`${p.first} sat with their breath a while. Calmer.`,'good'); render();
   }));
 
+  // ----- TRAITS: psychologist removes a bad trait; specialist coaching adds a good one -----
+  const badTraits=(p.acqTraits||[]).filter(k=>{const t=ACQ(k);return t&&!t.good;});
+  if(badTraits.length){
+    opts.push(OH('— Traits —'));
+    badTraits.forEach(k=>{ const t=ACQ(k); const cost=8000;
+      opts.push(O('🧠',`See a psychologist about "${t.l}"`,`work to overcome it · ${money(cost)}`,0,()=>{
+        if(p.money<cost){closeSheet();log(`${p.first} can't afford the sessions right now.`,'muted');render();return;}
+        p.money-=cost; closeSheet();
+        if(chance(65)){ removeTrait(p,k); log(`After months of work, ${p.first} overcame being ${t.l.toLowerCase()}.`,'big'); }
+        else log(`The sessions helped a little, but ${p.first} is still working through it.`,'muted');
+        render();
+      }));
+    });
+  }
+  if(p.age>=12){
+    const goodAvailable=ACQ_TRAITS.filter(t=>t.good&&!hasTrait(p,t.k));
+    if(goodAvailable.length){
+      const cost=15000;
+      opts.push(OH(badTraits.length?'':'— Traits —'));
+      opts.push(O('🌟','Hire a personal coach','train toward a positive trait · $15,000',0,()=>{
+        if(p.money<cost){closeSheet();log(`${p.first} can't afford a coach right now.`,'muted');render();return;}
+        p.money-=cost; closeSheet();
+        if(chance(50)){ const t=pick(goodAvailable); addTrait(p,t.k); }
+        else log(`${p.first} worked hard with the coach, but nothing quite clicked this time.`,'muted');
+        render();
+      }));
+    }
+  }
+
   sheet(html+opts.join(''), sh=>bindOpts(sh));
 }
 
@@ -2976,6 +3339,7 @@ function openHealth(){
 function openSelf(){
   const p=me();
   const traitChips=p.traits.map(k=>{const t=TRAITS.find(x=>x.k===k);return `<span class="page-flag" style="background:var(--panel-2);padding:6px 11px;border-radius:20px;margin-right:6px;display:inline-block;margin-bottom:6px">${t.e} ${t.l}</span>`}).join('');
+  const acqChips=(p.acqTraits||[]).map(k=>{const t=ACQ(k);if(!t)return '';return `<span class="page-flag" style="background:${t.good?'rgba(125,160,110,.18)':'rgba(180,90,80,.18)'};padding:6px 11px;border-radius:20px;margin-right:6px;display:inline-block;margin-bottom:6px">${t.e} ${t.l}</span>`}).join('');
   const allstats=[...STATMETA,{k:'athletic',l:'Athletic',c:'--sage'},{k:'fame',l:'Fame',c:'--gold'}];
   let bars=allstats.map(m=>{const v=Math.round(p.stats[m.k]);return `<div class="stat" style="margin:9px 0"><span class="lab" style="width:60px">${m.l}</span><span class="bar"><i class="fill" style="width:${v}%;background:var(--${m.c.slice(2)})"></i></span><span style="width:30px;text-align:right;font-size:12px;color:var(--ink-dim)">${v}</span></div>`}).join('');
   const netWorth = p.money + p.assets.reduce((s,a)=>s+a.value,0) + (p.portfolio?p.portfolio.low+p.portfolio.med+p.portfolio.high:0) + (p.businesses||[]).reduce((s,b)=>s+b.value,0);
@@ -2989,6 +3353,7 @@ function openSelf(){
   <p class="hint">${p.age} years old · born ${bdayStr}${p.born}${p.birthplace?' in '+p.birthplace:''}</p>
   <p class="hint" style="padding-top:0">${EDU[p.edu]} · ${jobLine}</p>
   <div style="padding:6px 20px 4px">${traitChips}</div>
+  ${acqChips?`<div style="padding:0 20px 4px">${acqChips}</div>`:''}
   <div style="padding:8px 20px 4px">${bars}</div>
   <div style="padding:10px 20px 0;color:var(--ink-dim);font-size:13px;line-height:1.7">
     Purse: <b style="color:var(--gold)">${money(p.money)}</b>${p.salary?` · earning ${money(p.salary)}/yr`:''}<br>
@@ -3001,6 +3366,9 @@ function openSelf(){
     ${p.fightRecord?`<br><span style="color:var(--sage)">Fight record: ${p.fightRecord.w}-${p.fightRecord.l}${p.champion?' · 🏆 CHAMPION':''}</span>`:''}
     ${p.greek?`<br>${GREEK.find(g=>g.k===p.greek)?GREEK.find(g=>g.k===p.greek).l:''} member`:''}
     ${p.powers&&p.powers.length?`<br><span style="color:var(--sky)">Powers: ${p.powers.join(', ')}</span>`:''}
+    ${p.nemesis?`<br><span style="color:var(--blood)">Nemesis: ${p.nemesis.name} (defeated ${p.nemesis.defeated}×)</span>`:''}
+    ${p.henchman?`<br><span style="color:var(--gold)">Henchman: ${p.henchman.name} (loyalty ${Math.round(p.henchman.loyalty)})</span>`:''}
+    ${p.job==='villain'&&p.heat?`<br><span style="color:var(--blood)">Heat: ${p.heat} 🔥</span>`:''}
     ${p.inPrison&&p.securityLevel?`<br><span style="color:var(--blood)">Held in ${SECURITY_NAMES[p.securityLevel]}</span>`:''}
     ${p.citizenship&&p.citizenship!==(G.hometown||'').split(', ')[1]?`<br>Citizen of ${p.citizenship}`:''}
     ${p.orientation&&p.orientation!=='straight'?`<br>Orientation: ${p.orientation==='gay'?(p.sex==='f'?'lesbian':'gay'):'bisexual'}`:''}
