@@ -227,6 +227,21 @@ const LAST=['Ashford','Vance','Okoye','Delgado','Sørensen','Castellanos','Ng','
 
 function newFirst(sex){ return sex==='m'?pick(FIRST_M):sex==='f'?pick(FIRST_F):pick(FIRST_N); }
 function makeSex(){ const r=Math.random(); return r<.48?'m':r<.96?'f':'n'; }
+// pick the sex of a romantic partner based on a person's orientation
+function partnerSex(p){
+  const o=p.orientation||defaultOrientation(p);
+  const same=p.sex, opp=p.sex==='m'?'f':p.sex==='f'?'m':makeSex();
+  if(o==='gay') return same;
+  if(o==='bi')  return chance(50)?same:opp;
+  return opp; // straight
+}
+function defaultOrientation(p){
+  // most are straight; a realistic minority gay/bi. Set lazily if never chosen.
+  if(p.orientation) return p.orientation;
+  const r=Math.random();
+  p.orientation = r<0.85?'straight': r<0.93?'gay':'bi';
+  return p.orientation;
+}
 
 /* ---------------- traits ---------------- */
 const TRAITS=[
@@ -360,6 +375,14 @@ const CAREERS=[
       {t:'Mission Commander',mult:4,   years:3, req:88, fame:36},
       {t:'Moonwalker',       mult:6,   years:4, req:93, fame:60},
     ]},
+  {k:'crimelord', l:'Organized Crime', emoji:'🕴', edu:0, base:30000, keyStat:'sly', crime:true, staged:true,
+    stages:[
+      {t:'Street Hustler',   mult:1,   years:0, req:0,  bust:8},
+      {t:'Enforcer',         mult:3,   years:2, req:0,  bust:12},
+      {t:'Crew Leader',      mult:8,   years:3, req:0,  bust:16},
+      {t:'Underboss',        mult:20,  years:3, req:0,  bust:20},
+      {t:'Kingpin',          mult:55,  years:4, req:0,  bust:26},
+    ]},
 ];
 const CAREER=k=>CAREERS.find(c=>c.k===k);
 
@@ -409,6 +432,7 @@ function blankPerson(opt={}){
     married:false, partnerName:null, partnerId:null,
     partnerHistory:[], // {name, sex, kind:'Spouse'|'Ex-spouse'|'Late spouse'|'Fling', from, to, kids}
     autonomous:false,  // once true, this person lives an offscreen life each year
+    orientation:null,  // 'straight'|'gay'|'bi' — set at coming of age
     rels: opt.rels ?? [],   // {name,kind,sex,bond,alive,id}
     childrenIds: [],
     parentIds: opt.parentIds ?? [],
@@ -471,6 +495,8 @@ function migrate(){
     if(!p.clubs) p.clubs=[];
     if(!p.partnerHistory) p.partnerHistory=[];
     if(p.autonomous==null) p.autonomous=false;
+    if(p.orientation==null) p.orientation=null;
+    if(p.lifeSentence==null) p.lifeSentence=false;
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
@@ -700,6 +726,14 @@ function ageUp(){
   // pending delayed consequences from past choices come due
   resolvePending(p);
 
+  // coming of age: discover orientation around 18 (player choice, once)
+  if(p.age===18 && !p.orientation && !p._askedOrientation){
+    p._askedOrientation=true;
+    render();
+    showOrientationPicker(p, ()=>{ lifeEvents(p); finishYear(p); });
+    return;
+  }
+
   // interactive choice event? if one fires, pause the turn and resume after the player chooses
   const ev = rollInteractiveEvent(p);
   if(ev){
@@ -744,7 +778,37 @@ function systemsTick(p){
     else if(chance(2)){ pet.bond=clamp(pet.bond+3); } });
   if(livePets){ p.stats.happy=clamp(p.stats.happy + Math.min(4,livePets*2)); p.stats.health=clamp(p.stats.health + Math.min(2,livePets)); }
   // prison
-  if(p.inPrison){ p.prisonYears--; p.stats.happy=clamp(p.stats.happy-4); if(p.prisonYears<=0){ p.inPrison=false; log(`${p.first} was released from prison. A second chance.`,'big'); } }
+  if(p.inPrison){
+    p.stats.happy=clamp(p.stats.happy-4); p.stats.health=clamp(p.stats.health-1);
+    p._yearsServed=(p._yearsServed||0)+1;
+    // appeal / case review — evidence can resurface and overturn a conviction
+    if(p._yearsServed>=3 && chance(p.lifeSentence?1.8:4)){
+      const kind=pick([
+        {t:`A key witness recanted their testimony.`, win:55},
+        {t:`${p.first}'s lawyer found evidence was mishandled.`, win:50},
+        {t:`New DNA evidence came to light.`, win:60},
+        {t:`A detective on the case was exposed for misconduct.`, win:65},
+        {t:`An appeals court agreed to review the case.`, win:40},
+      ]);
+      log(kind.t+` An appeal is underway.`,'big');
+      if(chance(kind.win)){
+        p.inPrison=false; p.prisonYears=0; p.lifeSentence=false;
+        p.record.push('Conviction overturned');
+        p.stats.happy=clamp(p.stats.happy+20);
+        log(`${p.first}'s conviction was overturned. A free ${sexWord(p.sex)} again.`,'big');
+        return;
+      } else {
+        log(`The appeal was denied. ${p.first} stays inside.`,'bad');
+      }
+    }
+    // parole for non-life sentences
+    if(!p.lifeSentence){
+      p.prisonYears--;
+      // chance of early parole for good behavior
+      if(p.prisonYears>1 && p._yearsServed>=2 && chance(12)){ p.prisonYears=0; log(`${p.first} was granted early parole for good behavior.`,'good'); }
+      if(p.prisonYears<=0){ p.inPrison=false; p._yearsServed=0; log(`${p.first} was released from prison. A second chance.`,'big'); }
+    }
+  }
 
   // investment portfolio — different risk/return profiles
   if(p.portfolio){
@@ -837,6 +901,47 @@ function runJob(p){
     if(p._stage==null){ p._stage=0; p._stageYears=0; p.jobTitle=stages[0].t; }
     p._stageYears++;
     const st=stages[p._stage];
+
+    // ----- ORGANIZED CRIME: bust risk, advancement by years+sly, prison on capture -----
+    if(c.crime){
+      // pay scales with stage; sly trait & low heat help
+      pay=Math.round(c.base*st.mult*(0.8+Math.random()*0.5));
+      p.salary=pay;
+      // bust chance this year, reduced by sly trait, raised by stage
+      let bust=st.bust + (p.traits.includes('sly')?-4:0) - (p.traits.includes('lucky')?3:0);
+      bust=Math.max(2,bust);
+      if(chance(bust)){
+        // caught — sentence scales with how deep they were
+        const tier=p._stage;
+        let sentence;
+        if(tier>=4 && chance(40)){ sentence='life'; }
+        else sentence = 2 + tier*2 + rnd(4);
+        p.record.push(`Convicted (${st.t})`);
+        if(sentence==='life'){
+          p.inPrison=true; p.prisonYears=999; p.lifeSentence=true;
+          log(`${p.first} was caught and sentenced to LIFE in prison.`,'death');
+        } else {
+          p.inPrison=true; p.prisonYears=sentence; p.lifeSentence=false;
+          log(`${p.first} got pinched — ${sentence} years in prison.`,'bad');
+        }
+        // seize a chunk of money
+        p.money=Math.floor(p.money*0.5);
+        endJob(p);
+        // costs still apply this year
+        p.money -= 11000 + (p.married?7000:0) + p.childrenIds.length*9000;
+        return;
+      }
+      // advancement: by years served in the life + a little luck
+      const next=stages[p._stage+1];
+      if(next && p._stageYears>=next.years && chance(40+(p.traits.includes('sly')?15:0)+(p.traits.includes('driven')?10:0))){
+        p._stage++; p._stageYears=0; p.jobTitle=next.t;
+        log(`${p.first} moved up in the organization — now ${next.t}. The money's bigger, the heat's worse.`,'big');
+      }
+      const costs0 = 11000 + (p.married?7000:0) + p.childrenIds.length*9000 + p.age*120;
+      p.money += pay - costs0;
+      return;
+    }
+
     const key=c.keyStat||'smarts';
     // training: working the craft slowly raises the key stat
     p.stats[key]=clamp(p.stats[key] + (p.traits.includes('driven')?1.6:1.0) + (chance(30)?1:0));
@@ -1039,7 +1144,7 @@ const CHOICE_EVENTS = [
     when:p=>p.age>=13&&p.age<=18, weight:3,
     body:p=>`${p.first} can't stop thinking about someone at school.`,
     choices:[
-      {label:'Confess your feelings', sub:'brave', effect:p=>{ if(chance(50)){ const sx=makeSex(); p.rels.push({name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:55+rnd(20),alive:true,id:nid()}); fx(p,{happy:14,looks:2}); return `They said yes! ${p.first} is over the moon.`;} fx(p,{happy:-10}); seed(p,2,'thick_skin'); return `Rejected. It stung, but ${p.first} survived.`; }},
+      {label:'Confess your feelings', sub:'brave', effect:p=>{ if(chance(50)){ const sx=partnerSex(p); p.rels.push({name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:55+rnd(20),alive:true,id:nid()}); fx(p,{happy:14,looks:2}); return `They said yes! ${p.first} is over the moon.`;} fx(p,{happy:-10}); seed(p,2,'thick_skin'); return `Rejected. It stung, but ${p.first} survived.`; }},
       {label:'Write a poem you never send', sub:'+smarts', effect:p=>{fx(p,{smarts:3,happy:-2}); return `${p.first} poured it into a notebook instead.`;}},
       {label:'Say nothing', sub:'safe', effect:p=>{fx(p,{happy:-4}); return `The moment passed. ${p.first} always wondered.`;}},
     ]},
@@ -1133,6 +1238,33 @@ function rollInteractiveEvent(p){
   let total=pool.reduce((s,e)=>s+(e.weight||1),0), r=Math.random()*total;
   for(const ev of pool){ r-=(ev.weight||1); if(r<=0) return ev; }
   return pool[0];
+}
+function showOrientationPicker(p, done){
+  const opts=[
+    {o:'straight', l:'Into the opposite sex', sub:'heterosexual'},
+    {o:'gay',      l:'Into the same sex',     sub:p.sex==='m'?'gay':p.sex==='f'?'lesbian':'homosexual'},
+    {o:'bi',       l:'Into both',             sub:'bisexual'},
+    {o:'_pnts',    l:'Rather not say',        sub:'leave it to chance'},
+  ];
+  let html=`<div class="grab"></div>
+    <div style="text-align:center;font-size:40px;margin:4px 0">💭</div>
+    <h3 style="text-align:center">Coming of age</h3>
+    <p style="padding:4px 22px 14px;color:var(--ink-dim);font-size:14.5px;line-height:1.55;text-align:center">${p.first} is figuring out who they are. Who are they drawn to?</p>`;
+  opts.forEach((c,i)=>{
+    html+=`<button class="opt" data-i="${i}"><span class="oico">▸</span><span class="otxt">${c.l}<span class="osub">${c.sub}</span></span></button>`;
+  });
+  const s=document.createElement('div'); s.className='scrim';
+  s.innerHTML=`<div class="sheet">${html}</div>`;
+  root.appendChild(s);
+  s.querySelectorAll('.opt').forEach(b=>{
+    b.onclick=()=>{
+      const c=opts[+b.dataset.i];
+      s.remove();
+      if(c.o==='_pnts'){ defaultOrientation(p); log(`${p.first} kept it private for now.`,'muted'); }
+      else { p.orientation=c.o; const word={straight:'straight',gay:p.sex==='f'?'a lesbian':'gay',bi:'bisexual'}[c.o]; log(`${p.first} understood themselves a little better — ${word}.`,'big'); }
+      done();
+    };
+  });
 }
 function showChoiceEvent(p, ev, done){
   if(ev.once && !p.seenEvents.includes(ev.id)) p.seenEvents.push(ev.id);
@@ -1302,6 +1434,32 @@ function lifeEvents(p){
   // family money unlock
   if(p.age===18 && p._familyMoney){ p.money += p._familyMoney; if(p._familyMoney>500)log(`${p.first} came into ${money(p._familyMoney)} of family standing.`,'good'); p._familyMoney=0; }
 
+  // career-specific flavor events
+  if(p.job!=='none' && chance(22)){
+    const j=p.job;
+    const careerEvents={
+      cop:[()=>{p.stats.fame=clamp(p.stats.fame+5);log(`${p.first} made a high-profile arrest. The local news ran the story.`,'good');},
+           ()=>{p.stats.health=clamp(p.stats.health-12);log(`${p.first} was injured chasing a suspect.`,'bad');}],
+      doctor:[()=>{p.stats.fame=clamp(p.stats.fame+4);p.stats.happy=clamp(p.stats.happy+6);log(`${p.first} saved a patient everyone else had given up on.`,'good');},
+              ()=>{p.stress=clamp(p.stress+18);log(`${p.first} lost a patient on the table. It haunts them.`,'bad');}],
+      lawyer:[()=>{const win=20000+rnd(120000);p.money+=win;log(`${p.first} won a big case — ${money(win)} in fees.`,'big');},
+              ()=>{p.stats.happy=clamp(p.stats.happy-8);log(`${p.first} lost a case they should have won.`,'bad');}],
+      teacher:[()=>{p.stats.happy=clamp(p.stats.happy+8);log(`A former student thanked ${p.first} for changing their life.`,'good');}],
+      tech:[()=>{const bonus=8000+rnd(40000);p.money+=bonus;log(`${p.first} shipped a feature that earned a ${money(bonus)} bonus.`,'good');},
+            ()=>{p.stress=clamp(p.stress+15);log(`A production outage had ${p.first} up for 36 hours straight.`,'bad');}],
+      crimelord:[()=>{const score=20000+rnd(200000);p.money+=score;log(`A big score paid off — ${money(score)}, no questions asked.`,'big');},
+                 ()=>{p.stats.health=clamp(p.stats.health-15);log(`A deal went bad. ${p.first} barely walked away.`,'bad');}],
+      nurse:[()=>{p.stats.happy=clamp(p.stats.happy+6);log(`${p.first} comforted a frightened family through a hard night.`,'good');}],
+      pilot:[()=>{p.stats.happy=clamp(p.stats.happy+6);log(`${p.first} flew through a storm and landed flawlessly.`,'good');}],
+      firefighter:[()=>{p.stats.fame=clamp(p.stats.fame+8);log(`${p.first} pulled a family from a burning building. A hero.`,'big');}],
+      soldier:[()=>{p.stats.health=clamp(p.stats.health-18);p.stats.fame=clamp(p.stats.fame+6);log(`${p.first} was decorated for valor — at a cost.`,'bad');}],
+      ufc:[()=>{p.stats.health=clamp(p.stats.health-14);log(`${p.first} took a knockout loss on the big card.`,'bad');}],
+      founder:[()=>{p.stress=clamp(p.stress+20);log(`${p.first} nearly burned out keeping the company alive.`,'bad');}],
+    };
+    const evs=careerEvents[j];
+    if(evs) pick(evs)();
+  }
+
   // medical emergencies — insurance is the difference between a scare and ruin
   if(p.age>=25 && chance(2.5 + Math.max(0,(p.age-50))*0.18)){
     const ail=pick(['a heart scare','a bad accident','appendicitis','a tumor scare','pneumonia','a broken hip']);
@@ -1461,11 +1619,13 @@ function openRelations(){
   rels.forEach((r,i)=>{
     const col=r.bond>66?'--sage':r.bond>33?'--gold':'--blood';
     const emoji=relEmoji(r);
+    const isRomantic = (r.kind==='Spouse'||r.kind==='Partner') && r.alive;
     html+=`<div class="rel ${r.alive?'':'dead'}">
       <div class="av">${emoji}</div>
       <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind}${r.note?' · '+r.note:''}${r.alive?'':' · passed'}</div>
       ${r.alive?`<div class="rbar"><i style="width:${r.bond}%;background:var(--${col.slice(2)})"></i></div>`:''}</div>
       ${r.alive?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="time">Spend<br>time</button>`:''}
+      ${isRomantic?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="leave">${r.kind==='Spouse'?'Divorce':'Break<br>up'}</button>`:''}
     </div>`;
   });
   // action footer
@@ -1502,6 +1662,9 @@ function openRelations(){
       const r=rels[+b.dataset.i]; r.bond=clamp(r.bond+8+rnd(8)); p.stats.happy=clamp(p.stats.happy+3);
       closeSheet(); log(`${p.first} spent time with ${r.name.split(' ')[0]}. They grew closer.`,'good'); render();
     });
+    sh.querySelectorAll('[data-act="leave"]').forEach(b=>b.onclick=()=>{
+      const r=rels[+b.dataset.i]; doBreakup(p, r);
+    });
     const marry=sh.querySelector('[data-do="marry"]'); if(marry)marry.onclick=()=>doMarry(p);
     const date=sh.querySelector('[data-do="date"]'); if(date)date.onclick=()=>doDate(p);
     const baby=sh.querySelector('[data-do="baby"]'); if(baby)baby.onclick=()=>doBaby(p,false);
@@ -1512,9 +1675,27 @@ function openRelations(){
   });
 }
 
+function doBreakup(p, r){
+  closeSheet();
+  if(r.kind==='Spouse'){
+    p.married=false; r.kind='Ex-spouse'; recordPartner(p,r,'Ex-spouse');
+    const split=Math.floor(p.money*(0.25+Math.random()*0.2));
+    p.money-=split;
+    p.stats.happy=clamp(p.stats.happy-12);
+    log(`${p.first} divorced ${r.name.split(' ')[0]}. The split cost ${money(split)}.`,'bad');
+  } else {
+    // partner breakup
+    r.kind='Ex'; r.alive=true;
+    // remove ex partners from the active list after a moment — keep as a faded entry
+    p.rels = p.rels.filter(x=>x!==r);
+    p.stats.happy=clamp(p.stats.happy-6);
+    log(`${p.first} broke up with ${r.name.split(' ')[0]}.`,'muted');
+  }
+  render();
+}
 function doFling(p){
   closeSheet();
-  const sx=makeSex(); const otherName=newFirst(sx)+' '+pick(LAST);
+  const sx=partnerSex(p); const otherName=newFirst(sx)+' '+pick(LAST);
   p.stats.happy=clamp(p.stats.happy+6);
   // chance of a child depends on age, lower than a committed couple
   const fertile = p.age<=47;
@@ -1561,7 +1742,7 @@ function relEmoji(r){
 function doDate(p){
   closeSheet();
   if(p.stats.looks+p.stats.happy < 40 && chance(50)){ log(`${p.first} tried to meet someone. It didn't click this time.`,'muted'); render(); return; }
-  const sx=makeSex(); const partner={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:45+rnd(30),alive:true,id:nid()};
+  const sx=partnerSex(p); const partner={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:45+rnd(30),alive:true,id:nid()};
   p.rels.push(partner); p.stats.happy=clamp(p.stats.happy+8);
   log(`${p.first} started seeing ${partner.name.split(' ')[0]}.`,'good'); render();
 }
@@ -1696,14 +1877,22 @@ function openActivities(){
       opts.push(OH(header));
       if(c.staged && p._stage!=null){
         const next=c.stages[p._stage+1];
-        if(next){ const key=c.keyStat||'smarts'; const have=Math.round(p.stats[key]);
-          opts.push(OH(`next: ${next.t} · needs ${key} ${next.req}+ (you: ${have})`));
-        } else { opts.push(OH(`at the very top of the game`)); }
-        const key=c.keyStat||'smarts';
-        opts.push(O('🔥','Train hard',`+${key}, costs health & joy`,0,()=>{
-          p.stats[key]=clamp(p.stats[key]+4+rnd(3)); p.stats.health=clamp(p.stats.health-3); p.stats.happy=clamp(p.stats.happy-3); p.stress=clamp(p.stress+6);
-          closeSheet(); log(`${p.first} trained relentlessly. ${capFirst(key)} is sharper.`,'good'); render();
-        }));
+        if(c.crime){
+          if(next){ opts.push(OH(`next: ${next.t} · climb by surviving & staying sharp`)); }
+          else { opts.push(OH(`at the top — but the heat never stops`)); }
+          opts.push(O('🤫','Lay low this year','cut the heat, less income',0,()=>{
+            p.salary=Math.round(p.salary*0.4); p._layLow=true; closeSheet(); log(`${p.first} kept a low profile, taking fewer risks.`,'muted'); render();
+          }));
+        } else {
+          if(next){ const key=c.keyStat||'smarts'; const have=Math.round(p.stats[key]);
+            opts.push(OH(`next: ${next.t} · needs ${key} ${next.req}+ (you: ${have})`));
+          } else { opts.push(OH(`at the very top of the game`)); }
+          const key=c.keyStat||'smarts';
+          opts.push(O('🔥','Train hard',`+${key}, costs health & joy`,0,()=>{
+            p.stats[key]=clamp(p.stats[key]+4+rnd(3)); p.stats.health=clamp(p.stats.health-3); p.stats.happy=clamp(p.stats.happy-3); p.stress=clamp(p.stress+6);
+            closeSheet(); log(`${p.first} trained relentlessly. ${capFirst(key)} is sharper.`,'good'); render();
+          }));
+        }
       }
       opts.push(O('💼','Work harder this year','+pay odds, −health',0,()=>{p.stats.happy=clamp(p.stats.happy-4);p.stats.health=clamp(p.stats.health-3);if(chance(45)){const b=Math.round(p.salary*0.12);p.money+=b;closeSheet();log(`${p.first} grinded and pocketed a ${money(b)} bonus.`,'good');render();}else{closeSheet();log(`${p.first} worked hard. Nobody noticed.`,'muted');render();}}));
       opts.push(O('🚪','Quit this job','walk away',0,()=>{closeSheet();endJob(p,`${p.first} quit. Free, for now.`);render();}));
@@ -1720,7 +1909,7 @@ function openActivities(){
     opts.push(O('🌃','Hit the nightlife','clubs & bars · +joy, meet people',0,()=>{
       p.money-=Math.min(p.money,200+rnd(400)); p.stats.happy=clamp(p.stats.happy+9); closeSheet();
       const roll=rnd(100);
-      if(roll<30 && !p.married){ const sx=makeSex(); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:40+rnd(25),alive:true,id:nid()}; p.rels.push(fr); log(`${p.first} hit it off with ${fr.name.split(' ')[0]} at the bar.`,'good'); }
+      if(roll<30 && !p.married){ const sx=partnerSex(p); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:40+rnd(25),alive:true,id:nid()}; p.rels.push(fr); log(`${p.first} hit it off with ${fr.name.split(' ')[0]} at the bar.`,'good'); }
       else if(roll<55){ const sx=makeSex(); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Friend',sex:sx,bond:45+rnd(25),alive:true,id:nid()}; p.rels.push(fr); log(`${p.first} made a new friend out on the town.`,'good'); }
       else if(roll<70){ p.stats.health=clamp(p.stats.health-5); log(`${p.first} partied too hard and felt it for days.`,'bad'); if(chance(25))p.addiction='drinking'; }
       else log(`${p.first} had a great night out.`,'good');
@@ -1741,7 +1930,7 @@ function openActivities(){
       opts.push(O('💬','Meet someone online','social media dating',0,()=>{
         closeSheet();
         if(p.married){ log(`${p.first} is already spoken for.`,'muted'); render(); return; }
-        if(chance(55)){ const sx=makeSex(); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:40+rnd(30),alive:true,id:nid()}; p.rels.push(fr); p.stats.happy=clamp(p.stats.happy+6); log(`${p.first} matched with ${fr.name.split(' ')[0]} online.`,'good'); }
+        if(chance(55)){ const sx=partnerSex(p); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:40+rnd(30),alive:true,id:nid()}; p.rels.push(fr); p.stats.happy=clamp(p.stats.happy+6); log(`${p.first} matched with ${fr.name.split(' ')[0]} online.`,'good'); }
         else log(`${p.first} swiped for hours. Nothing stuck.`,'muted');
         render();
       }));
@@ -1809,7 +1998,8 @@ function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base
       popstar:`${p.first} played their first open mic to a half-empty room. It begins.`,
       restaurateur:`${p.first} started as a line cook, burning their hands and learning fast.`,
       esports:`${p.first} started grinding ranked ladders into the night.`,
-      astronaut:`${p.first} was accepted into the astronaut candidate program. The stars await.`}[c.k]
+      astronaut:`${p.first} was accepted into the astronaut candidate program. The stars await.`,
+      crimelord:`${p.first} stepped into the underworld as a street hustler. There's money here, and danger.`}[c.k]
       || `${p.first} began the long climb in ${c.l.toLowerCase()}.`;
     log(intro+headstart,'big'); render(); return;
   }
@@ -2000,7 +2190,8 @@ function openSelf(){
     ${(p.partnerHistory&&p.partnerHistory.filter(h=>h.status==='Ex-spouse').length)?`<br>${p.partnerHistory.filter(h=>h.status==='Ex-spouse').length} ex-spouse(s) · ${p.partnerHistory.filter(h=>h.status==='Fling').length} past fling(s)`:''}
     ${p.onSocial?`<br>${p.socialFollowers.toLocaleString()} social followers`:''}
     ${p.record.length?`<br>Record: ${p.record.join(', ')}`:''}
-    ${p.inPrison?`<br><span style="color:var(--blood)">In prison — ${p.prisonYears} year(s) left</span>`:''}
+    ${p.orientation&&p.orientation!=='straight'?`<br>Orientation: ${p.orientation==='gay'?(p.sex==='f'?'lesbian':'gay'):'bisexual'}`:''}
+    ${p.inPrison?`<br><span style="color:var(--blood)">In prison — ${p.lifeSentence?'LIFE sentence':p.prisonYears+' year(s) left'}</span>`:''}
   </div>
   ${assetLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Assets</div>${assetLines}</div>`:''}
   ${bizLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Businesses</div>${bizLines}</div>`:''}
