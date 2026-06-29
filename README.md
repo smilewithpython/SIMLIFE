@@ -18,6 +18,8 @@ It's one self-contained HTML file with no internet required after it loads, and 
 
 **Life & leisure** — hit the nightlife to meet people, join **social media** and grow a following into brand deals, plus a deep pool of random events for childhood, teens, adulthood, and old age. Pets age, bond, boost your happiness and health, and are mourned when they pass. Crime can land you in prison with a record.
 
+**Interactive choices & consequences** — some years stop and ask you to *decide*: stand up to a bully or report them, take the risky startup job or stay safe, give in to temptation or walk away, restore the old family house or sell it. Many choices plant a seed that pays off — or comes back to bite — years later, so a decision at 16 can echo at 40.
+
 ## Put it on GitHub Pages and install it on your phone
 1. Upload **all** the files in this folder together — keep them in the same place: `index.html`, `manifest.webmanifest`, `icon-192.png`, `icon-512.png`.
 2. In the repo: **Settings → Pages → Build and deployment**, set Source to **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
