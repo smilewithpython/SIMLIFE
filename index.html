@@ -399,6 +399,14 @@ const CAREERS=[
       {t:'Title Challenger', mult:22,  years:2, req:84, fame:22},
       {t:'World Champion',   mult:48,  years:3, req:90, fame:40},
     ]},
+  {k:'mogul', l:'Media Mogul', emoji:'📺', edu:1, base:38000, keyStat:'smarts', staged:true,
+    stages:[
+      {t:'Intern Reporter', mult:1,   years:0, req:0,  fame:1},
+      {t:'Field Reporter',  mult:2.2, years:2, req:54, fame:5},
+      {t:'Anchor',          mult:5,   years:3, req:64, fame:16},
+      {t:'Bureau Chief',    mult:12,  years:3, req:74, fame:30},
+      {t:'Network President',mult:30, years:4, req:84, fame:50},
+    ]},
   {k:'director', l:'Film Director', emoji:'🎥', edu:1, base:30000, keyStat:'smarts', staged:true,
     stages:[
       {t:'Film School Grad', mult:1,   years:0, req:0,  fame:0},
@@ -491,8 +499,140 @@ const CAREER=k=>CAREERS.find(c=>c.k===k);
 
 // High-school clubs: joining gives yearly stat growth + a head-start flag for matching careers
 // Superpowers — granted to heroes and villains, expanding as they rise
-const POWERS=['super strength','flight','telepathy','invisibility','energy blasts','super speed','telekinesis','elemental control','shapeshifting','regeneration','technopathy','time manipulation','force fields','mind control','weather control','phasing','duplication','magnetism','sonic scream','laser vision','heat vision','x-ray vision','super hearing','frost breath','density control','energy absorption','probability control','gravity control','molecular control','immortality'];
-const TOTAL_POWERS = POWERS.length; // 30 — the bloodline must acquire them all to beat Homelander
+const POWERS=[
+  // PHYSICAL (7)
+  'super strength','super speed','super endurance','regeneration','invulnerability','size manipulation','density control',
+  // SENSORY (7)
+  'laser vision','x-ray vision','telescopic vision','microscopic vision','super hearing','echolocation','precognition',
+  // ELEMENTAL (8)
+  'elemental control','pyrokinesis','electrokinesis','cryokinesis','hydrokinesis','aerokinesis','geokinesis','weather control',
+  // MENTAL / PSYCHIC (6)
+  'telepathy','mind control','empathy','dream walking','memory manipulation','psychic shielding',
+  // SPACE & REALITY (5)
+  'flight','phasing','teleportation','gravity manipulation','probability manipulation',
+  // ENERGY (6)
+  'force fields','energy blasts','energy absorption','magnetism','light manipulation','sonic scream',
+  // BODY & TRANSFORMATION (5)
+  'shapeshifting','invisibility','duplication','biological mimicry','pheromone control',
+  // UNIQUE / RARE (6)
+  'telekinesis','technopathy','time manipulation','dimensional pocket','astral projection','cosmic awareness'
+];
+const TOTAL_POWERS = POWERS.length; // 50 — the bloodline must acquire them all to beat Homelander
+// Power rarity (affects how readily events grant them)
+const POWER_RARITY = {
+  'super strength':'common','super speed':'common','regeneration':'common','elemental control':'common',
+  'telepathy':'common','empathy':'common','flight':'common','force fields':'common','energy blasts':'common',
+  'invisibility':'common','telekinesis':'common',
+  'super endurance':'uncommon','invulnerability':'uncommon','size manipulation':'uncommon','laser vision':'uncommon',
+  'x-ray vision':'uncommon','telescopic vision':'uncommon','super hearing':'uncommon','pyrokinesis':'uncommon',
+  'electrokinesis':'uncommon','cryokinesis':'uncommon','weather control':'uncommon','mind control':'uncommon',
+  'psychic shielding':'uncommon','phasing':'uncommon','force fields ':'uncommon','energy absorption':'uncommon',
+  'magnetism':'uncommon','sonic scream':'uncommon','shapeshifting':'uncommon','technopathy':'uncommon',
+};
+function powerRarity(name){ return POWER_RARITY[name]||'rare'; }
+// ===== THE VAULT: items earned at career capstones, stored across generations to use against Homelander =====
+// req: required for the final fight (15). career: the job whose peak unlocks it. alt: the tempting reward you give up to store it.
+const VAULT_ITEMS = [
+  // --- 15 REQUIRED ---
+  {id:'virus', name:'The Virus', emoji:'🧬', req:true, career:'madsci', desc:'A compound that disrupts his regeneration for 72 hours.', alt:'a fortune from selling the research'},
+  {id:'orbital', name:'Orbital Strike Authorization', emoji:'🛰️', req:true, career:'soldier', desc:'A classified orbital weapon, one activation code, one target.', alt:'a quiet, honored retirement'},
+  {id:'blackfile', name:'The Black File', emoji:'🗄️', req:true, career:'agent', desc:'Every verified weakness intelligence ever gathered on him.', alt:'a lucrative private security contract'},
+  {id:'order', name:'The Order', emoji:'📜', req:true, career:'politician', desc:'A sealed executive order authorizing all force against one enhanced individual.', alt:'a triumphant, scandal-free legacy'},
+  {id:'underground', name:'The Underground', emoji:'🕳️', req:true, career:'crimelord', desc:'Tunnels and safe houses entirely off his surveillance grid.', alt:'liquidating the empire for a fortune'},
+  {id:'formula', name:'The Formula', emoji:'💉', req:true, career:'doctor', desc:'A compound that drops his invulnerability to near-human for hours.', alt:'a Nobel-track medical breakthrough'},
+  {id:'combatai', name:'The Combat AI', emoji:'🤖', req:true, career:'tech', desc:'Predicts his next move with 91% accuracy.', alt:'a record-breaking acquisition payout'},
+  {id:'coalition', name:'The Coalition', emoji:'🦸', req:true, career:'superhero', desc:'A pledge from every hero your ancestor united.', alt:'cementing your own solo legend'},
+  {id:'paper', name:'The Paper', emoji:'📑', req:true, career:'scientist', desc:'The one physiological process Compound V cannot repair.', alt:'the Nobel Prize and global acclaim'},
+  {id:'precedent', name:'The Precedent', emoji:'⚖️', req:true, career:'lawyer', desc:'A ruling stripping enhanced individuals of legal immunity.', alt:'appointment to the highest court'},
+  {id:'gloves', name:'The Gloves', emoji:'🥊', req:true, career:'ufc', desc:'An alloy that amplifies a super-strong strike past his invulnerability.', alt:'the richest title-defense purse ever'},
+  {id:'compound', name:'The Compound', emoji:'🌑', req:true, career:'astronaut', desc:'A lunar substance that weakens his biology.', alt:'history as the most celebrated astronaut alive'},
+  {id:'device', name:'The Device', emoji:'☢️', req:true, career:'villain', desc:'The doomsday weapon your ancestor built and never used — repurposed for one target.', alt:'ransoming the world for untold billions'},
+  {id:'broadcast', name:'The Broadcast', emoji:'📡', req:true, career:'mogul', desc:'Decades of his atrocities, ready to hit every screen on earth at once.', alt:'becoming the most powerful person in media'},
+  {id:'mandate', name:'The Mandate', emoji:'🚔', req:true, career:'cop', desc:'A legal framework authorizing engagement of a public enhanced threat.', alt:'retiring as a decorated, beloved chief'},
+  // --- 15 OPTIONAL (improve odds + narration) ---
+  {id:'shares', name:'The Shares', emoji:'📈', req:false, career:'corporate', desc:'A seat inside Vought — real-time intel on his schedule and mind.', alt:'the largest CEO payout in company history'},
+  {id:'documentary', name:'The Documentary', emoji:'🎥', req:false, career:'director', desc:'The definitive filmed account of his crimes.', alt:'an Academy Award and a finished masterpiece'},
+  {id:'manifesto', name:'The Manifesto', emoji:'📕', req:false, career:'writer', desc:'A book that turned opinion against superhuman authority.', alt:'a record-shattering bestseller deal'},
+  {id:'algorithm', name:'The Algorithm', emoji:'🎯', req:false, career:'esports', desc:'A targeting model built from inhuman reaction-time data.', alt:'immortality as an esports legend'},
+  {id:'archive', name:'The Archive', emoji:'🗃️', req:false, career:'youtuber', desc:'Millions of followers\' crowdsourced footage of his incidents.', alt:'the biggest creator payday ever'},
+  {id:'song', name:'The Song', emoji:'🎵', req:false, career:'popstar', desc:'An anthem of quiet resistance embedded in the culture.', alt:'the best-selling record of all time'},
+  {id:'reel', name:'The Exposé Reel', emoji:'🎞️', req:false, career:'moviestar', desc:'Raw on-set footage from Vought projects — undeniable.', alt:'an Oscar and untouchable stardom'},
+  {id:'crowdwill', name:"The Crowd's Will", emoji:'🤼', req:false, career:'wwe', desc:'A Hall-of-Fame name the crowd instinctively rallies behind.', alt:'a clean Hall-of-Fame retirement'},
+  {id:'engine', name:'The Exposure Engine', emoji:'🧠', req:false, career:'aistartup', desc:'An AI that synthesizes his most damaging narrative in real time.', alt:'the biggest tech IPO in history'},
+  {id:'erp', name:'Emergency Response Protocol', emoji:'🚒', req:false, career:'firefighter', desc:'Infrastructure to manage collateral damage during the fight.', alt:'retiring as a legendary fire chief'},
+  {id:'grid', name:'The Grid Override', emoji:'🔌', req:false, career:'electrician', desc:'One sequence blacks out every camera in a zone.', alt:'a comfortable master-electrician payout'},
+  {id:'highway', name:'The Highway', emoji:'🚚', req:false, career:'trucker', desc:'Decades of routes on no map or satellite.', alt:'a full pension and the open road'},
+  {id:'routemap', name:'The Route Map', emoji:'🗺️', req:false, career:'driver', desc:'A complete behavioral map of where he goes and when he\'s alone.', alt:'a quiet, steady retirement'},
+  {id:'emergpowers', name:'The Emergency Powers', emoji:'🏛️', req:false, career:'governor', desc:'State emergency powers that activate the National Guard.', alt:'a clean path toward the presidency'},
+  {id:'network', name:'The Network', emoji:'🍽️', req:false, career:'restaurateur', desc:'Blackmail on his handlers, gathered over decades of service.', alt:'a celebrated culinary empire'},
+  // --- sub-boss rewards (earned by defeating sub-bosses, not careers) ---
+  {id:'aquanet', name:"Vought's Aquatic Network", emoji:'🌊', req:false, career:null, subboss:true, desc:'Off-grid underwater routing — three new approaches to the final fight.', fightLine:'A coalition unit arrives via aquatic approach, undetected.'},
+  {id:'deepfile', name:"The Deep's File", emoji:'📁', req:false, career:null, subboss:true, desc:"A daily-contact psychological profile of Homelander, from someone who fears him too.", fightLine:'You know his psychology from the inside.'},
+  {id:'blindspot', name:'The Blind Spot', emoji:'🕶️', req:false, career:null, subboss:true, desc:"With Translucent gone, Homelander can't read your power set going in.", fightLine:'One power beat surprises him completely — "He didn\'t know about this one."'},
+  {id:'counternarr', name:'The Counter-Narrative', emoji:'📺', req:false, career:null, subboss:true, desc:"Firecracker's media empire, repurposed to run your story.", fightLine:'The Broadcast is amplified; his support drops in real time.'},
+];
+const REQUIRED_VAULT = VAULT_ITEMS.filter(v=>v.req).length; // 15
+function vaultHas(id){ return G.vault && G.vault.includes(id); }
+function vaultItem(id){ return VAULT_ITEMS.find(v=>v.id===id); }
+function vaultRequiredCount(){ return (G.vault||[]).filter(id=>{const v=vaultItem(id);return v&&v.req;}).length; }
+function vaultOptionalCount(){ return (G.vault||[]).filter(id=>{const v=vaultItem(id);return v&&!v.req;}).length; }
+function storeInVault(id){ if(!G.vault) G.vault=[]; if(!G.vault.includes(id)) G.vault.push(id); }
+// Is this character at the absolute peak of their (vault-relevant) career?
+function atCareerPeak(p){
+  const c=CAREER(p.job); if(!c) return false;
+  if(c.staged && c.stages){ return (p._stage!=null) && p._stage>=c.stages.length-1 && (p._stageYears||0)>=2; }
+  if(c.ladder){ return (p._rung||0)>=c.ladder.length-1 && (p.jobYears||0)>=3; }
+  // wild/simple careers: peak ~ long tenure + high relevant stat/fame
+  if(c.wild){ return (p.jobYears||0)>=8 && (p.stats.fame>55 || p.champion); }
+  return (p.jobYears||0)>=20; // simple careers (electrician, trucker, driver) — a long career
+}
+// map a job to the vault item it can yield (handles shared/governor special case)
+function vaultItemForJob(p){
+  // governor is the politician career below presidential peak
+  if(p.job==='politician' && p._rung!=null){
+    const c=CAREER('politician');
+    if(c.ladder){ const top=c.ladder.length-1; if(p._rung===top) return vaultItem('order'); if(p._rung>=top-1) return vaultItem('emergpowers'); }
+  }
+  return VAULT_ITEMS.find(v=>v.career===p.job);
+}
+// Offer the vault capstone choice if eligible (called yearly). Returns true if a modal was shown.
+function checkVaultCapstone(p, done){
+  if(!p.alive || p.job==='none') return false;
+  const item=vaultItemForJob(p);
+  if(!item) return false;
+  if(vaultHas(item.id)) return false;
+  if(!p._vaultOffered) p._vaultOffered=[];
+  if(p._vaultOffered.includes(item.id)) return false;
+  if(!atCareerPeak(p)) return false;
+  p._vaultOffered.push(item.id);
+  showVaultCapstone(p, item, done);
+  return true;
+}
+function showVaultCapstone(p, item, done){
+  const reward = 200000 + rnd(3000000);
+  const html=`<div class="grab"></div>
+    <div style="text-align:center;font-size:46px;margin:6px 0">${item.emoji}</div>
+    <h3 style="text-align:center">A capstone discovery</h3>
+    <p style="padding:6px 22px 4px;color:var(--gold);font-size:14px;text-align:center;font-weight:600">${item.name}</p>
+    <p style="padding:2px 22px 12px;color:var(--ink-dim);font-size:14px;line-height:1.6;text-align:center">At the very peak of their career, ${p.first} can secure something extraordinary: ${item.desc} ${item.req?'<b style="color:var(--rose)">The bloodline will need this to face Homelander.</b>':'<span style="color:var(--ink-faint)">(Would aid the final fight.)</span>'}</p>`;
+  const opts=[];
+  opts.push(O('🔒','Store it for the bloodline',`a sacrifice — you give up ${item.alt}`,0,()=>{ closeSheet(); storeInVault(item.id); setFlag(p,'vaultContributor'); log(`${p.first} secured ${item.name} for the vault. A gift to descendants who'll never know their sacrifice.`,'big'); if(done)done(); else render(); }));
+  opts.push(O('💰','Take the reward instead',item.alt,0,()=>{ closeSheet(); p.money+=reward; p.stats.fame=clamp(p.stats.fame+8); log(`${p.first} chose ${item.alt} — ${money(reward)} and acclaim. The vault stays empty of ${item.name}.`,'good'); if(done)done(); else render(); }));
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+// SYNTHESIS: holding both prerequisites auto-unlocks a third power at the next heir's birth (passive bonus)
+const POWER_SYNTHESIS = [
+  {a:'telepathy', b:'empathy', out:'dream walking'},
+  {a:'force fields', b:'energy blasts', out:'energy absorption'},
+  {a:'x-ray vision', b:'telescopic vision', out:'microscopic vision'},
+  {a:'telepathy', b:'force fields', out:'psychic shielding'},
+  {a:'pyrokinesis', b:'electrokinesis', out:'light manipulation'},
+  {a:'hydrokinesis', b:'cryokinesis', out:'aerokinesis'},
+  {a:'teleportation', b:'phasing', out:'dimensional pocket'},
+  {a:'elemental control', b:'weather control', out:'geokinesis'},
+  {a:'precognition', b:'cosmic awareness', out:'astral projection'},
+  {a:'super endurance', b:'regeneration', out:'invulnerability'},
+];
 // ===== HOMELANDER: an all-powerful narcissist who exists in this world, mostly ignoring everyone =====
 const HOMELANDER_DEEDS=[
   n=>`Homelander incinerated ${n} protesters who "looked at him wrong," then smiled for the cameras.`,
@@ -517,6 +657,59 @@ function homelanderBlurb(){
   const n=(10+rnd(900)).toLocaleString();
   return d(n);
 }
+// ===== VOUGHT PR BLURBS — upgrade in waves as the player encounters the sub-bosses =====
+const VOUGHT_BLURBS = {
+  1:[ // before any sub-boss is triggered
+    `A Vought International spokesperson confirmed the aquatic response unit handled the pier incident professionally and without incident. No environmental impact recorded.`,
+    `Vought International security services neutralized an ongoing surveillance breach at the Houston facility. The contracting officer responsible was placed on administrative leave.`,
+    `Following last week's broadcast, Vought's media division thanked viewers for their continued support of the enhanced individual program and its community partners.`,
+  ],
+  2:[ // after at least one sub-boss encountered
+    `The Deep issued a personal statement regarding the Pacific Coastal incident. Vought confirms his account is the authorized version of events.`,
+    `Vought International acknowledges recent reporting regarding Translucent's operational status. The company has no comment on personnel matters.`,
+    `Firecracker's media network, FlameCast, reached an agreement with Vought for expanded distribution into 14 additional markets.`,
+  ],
+  3:[ // after two sub-bosses defeated
+    `Vought confirms The Deep is no longer available for public appearances pending an internal review. All scheduled events have been cancelled.`,
+    `Vought declined to confirm or deny reports of an unauthorized incident involving security personnel in the greater Chicago area.`,
+    `Firecracker's FlameCast network has suspended operations effective immediately. Vought cites "a strategic pivot in media partnerships."`,
+    `Homelander has cancelled his appearance at the National Governors Association summit — the third public cancellation in four months.`,
+  ],
+  4:[ // after all three defeated
+    `Vought's Q3 earnings call has been postponed amid an "ongoing strategic review." Several senior staff have announced departures this month.`,
+    `Multiple enhanced individuals formerly contracted with Vought have declined to renew agreements this quarter.`,
+    `Homelander has not made a confirmed public appearance in 47 days. Vought says he is "engaged in classified operations." Online speculation is at record volume.`,
+  ],
+};
+function voughtBlurbWave(){
+  const defeated=(G.subBossesDefeated||[]).length;
+  const encountered=(G.subBossesSeen||[]).length;
+  if(defeated>=3) return 4;
+  if(defeated>=2) return 3;
+  if(encountered>=1) return 2;
+  return 1;
+}
+function anyHomelanderBlurb(){
+  // mix Homelander's atrocities with Vought's PR spin (escalating by wave)
+  if(chance(45)){ const w=voughtBlurbWave(); return pick(VOUGHT_BLURBS[w]); }
+  return homelanderBlurb();
+}
+// ===== SUB-BOSSES =====
+const SUB_BOSSES = [
+  {id:'deep', name:'The Deep', emoji:'🌊', threshold:10, reward:'aquanet',
+   blurb:p=>`The Deep has been linked to an incident near ${(p.birthplace||'your city').split(',')[0]}. He's acting on Vought's orders. You can confront him.`},
+  {id:'translucent', name:'Translucent', emoji:'💎', threshold:20, reward:'blindspot',
+   blurb:p=>`A figure with Translucent's profile has been surveilling your bloodline. He's found your location. You can confront him.`},
+  {id:'firecracker', name:'Firecracker', emoji:'🧨', threshold:30, reward:'counternarr',
+   blurb:p=>`Firecracker has identified your bloodline publicly. She's running the story. You can let her — or confront her.`},
+];
+// Awareness levels: how aware Vought/Homelander are of the bloodline
+const AWARENESS_LEVELS=['Dormant','Noticed','Watched','HUNTED'];
+function awarenessLevel(){ return Math.max(0,Math.min(3, G.awareness||0)); }
+function raiseAwareness(n){ G.awareness=Math.max(0,Math.min(3,(G.awareness||0)+(n||1))); }
+function lowerAwareness(n){ G.awareness=Math.max(0,(G.awareness||0)-(n||1)); }
+function subBossDefeated(id){ return (G.subBossesDefeated||[]).includes(id); }
+function subBossSeen(id){ return (G.subBossesSeen||[]).includes(id); }
 function grantPower(p, force){
   if(!p.powers) p.powers=[];
   // a character can only acquire 2 NEW powers per generation (beyond what they inherited).
@@ -532,6 +725,7 @@ function grantPower(p, force){
 }
 function hasPower(p,name){ return p.powers && p.powers.includes(name); }
 function hasAllPowers(p){ return p.powers && p.powers.length>=TOTAL_POWERS; }
+function bloodlineReady(p){ return hasAllPowers(p) && vaultRequiredCount()>=REQUIRED_VAULT; }
 // Which powers give a meaningful edge in which careers, and a short flavor line.
 // Each entry: power -> { careers:[...], stat?:statToBoost, line:(p)=>flavor }
 const POWER_CAREER = {
@@ -747,6 +941,11 @@ function migrate(){
   // backfill fields added in later versions so old saves keep working
   if(!G.hometown) G.hometown='Unknown';
   if(!G.world) G.world=[];
+  if(!G.vault) G.vault=[];
+  if(!G.subBossesSeen) G.subBossesSeen=[];
+  if(!G.subBossesDefeated) G.subBossesDefeated=[];
+  if(G.awareness==null) G.awareness=0;
+  if(G.sycophant==null) G.sycophant=0;
   if(!G.country) G.country=(G.hometown||'').split(', ')[1]||null;
   G.people.forEach(p=>{
     if(!p.portfolio) p.portfolio={low:0,med:0,high:0};
@@ -1000,6 +1199,8 @@ function buildActions(){
     {ico:'🧠',l:'Self',fn:openSelf},
     {ico:'🌳',l:'Tree',fn:openTree},
   ];
+  // The Homelander tab appears once the bloodline is on the path (has powers, or later generations)
+  if(homelanderTabUnlocked(p)) acts.push({ico:'☄️',l:'Homelander',fn:openHomelander});
   acts.forEach(a=>{
     const b=document.createElement('button'); b.className='act';
     b.innerHTML=`<span class="ico">${a.ico}</span><span>${a.l}</span>`;
@@ -1031,7 +1232,7 @@ function advanceQuarter(){
   }
   if(!G.homelanderDefeated){
     // 3% ambient news blurb of Homelander's latest atrocity (pure flavor)
-    if(chance(3)){ log(`📰 ${homelanderBlurb()}`,'muted'); }
+    if(chance(3)){ log(`📰 ${anyHomelanderBlurb()}`,'muted'); }
     // 0.05% chance Homelander accidentally kills the current character
     if(Math.random()*100 < 0.05){
       p._causeOfDeath = `caught in the path of one of Homelander's careless rampages`;
@@ -1251,6 +1452,18 @@ function runYear(){
     render();
     showEscapeChoice(p, ()=>finishYear(p));
     return;
+  }
+
+  // vault capstone: at a career peak, offer to store a vault item for the bloodline
+  {
+    const item=(p.alive&&p.job!=='none')?vaultItemForJob(p):null;
+    if(item && !vaultHas(item.id) && !(p._vaultOffered||[]).includes(item.id) && atCareerPeak(p)){
+      if(!p._vaultOffered)p._vaultOffered=[];
+      p._vaultOffered.push(item.id);
+      render();
+      showVaultCapstone(p, item, ()=>finishYear(p));
+      return;
+    }
   }
 
   // interactive choice event? if one fires, pause the turn and resume after the player chooses
@@ -4213,6 +4426,7 @@ function resolvePregnancy(p){
     p.pregnant=null;
     p.stats.happy=clamp(p.stats.happy+10);
     log(`A child was born — ${child.first} ${child.last}.`,'birth');
+    if(child._synthesized&&child._synthesized.length) child._synthesized.forEach(pw=>log(`✨ The bloodline's powers combined — ${child.first} was born with ${pw}!`,'big'));
     // let the player name them
     const otherLast = preg.otherParent? (preg.otherParent.split(' ').slice(1).join(' ')||null):null;
     if(p.id===G.cur) openNameChild(p, child, otherLast);
@@ -4432,7 +4646,11 @@ function makeChild(p, opts={}){
     const mate=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
     if(mate && mate.powers) mate.powers.forEach(pw=>inherited.add(pw));
     if(opts.otherPowers) opts.otherPowers.forEach(pw=>inherited.add(pw));
+    // SYNTHESIS: holding both prerequisites auto-unlocks a third power for the heir
+    let synthesized=[];
+    POWER_SYNTHESIS.forEach(s=>{ if(inherited.has(s.a)&&inherited.has(s.b)&&!inherited.has(s.out)){ inherited.add(s.out); synthesized.push(s.out); } });
     if(inherited.size){ child.powers=[...inherited]; child.powersGained=0; }
+    child._synthesized=synthesized;
   }
   G.people.push(child);
   p.childrenIds.push(child.id);
@@ -4458,6 +4676,7 @@ function doBaby(p, ivf){
   const sp2=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
   const otherLast = sp2 ? (sp2.name.split(' ').slice(1).join(' ')||null) : null;
   log(`A child was born — ${child.first} ${child.last}.`,'birth');
+  if(child._synthesized&&child._synthesized.length) child._synthesized.forEach(pw=>log(`✨ The bloodline's powers combined — ${child.first} was born with ${pw}!`,'big'));
   openNameChild(p, child, otherLast);
 }
 function doAdopt(p){
@@ -4470,6 +4689,40 @@ function doAdopt(p){
   p.stats.happy=clamp(p.stats.happy+12);
   log(`${p.first} adopted ${child.first}${child.age>0?`, age ${child.age}`:''}. A family, chosen.`,'birth');
   openNameChild(p, child, null);
+}
+// Mad-science blood transfusion: pass ~2/3 of the donor's powers (randomly chosen) to an adopted heir.
+// Adopted children normally inherit nothing — this is the bloodline's safety valve.
+function doPowerTransfusion(p){
+  const adoptedRels=p.rels.filter(r=>r.kind==='Child'&&r.alive&&(findP(G,r.id)||{}).adopted);
+  if(!adoptedRels.length){ log(`${p.first} has no adopted heir to transfuse.`,'muted'); render(); return; }
+  if(!p.powers||!p.powers.length){ log(`${p.first} has no powers to pass on.`,'muted'); render(); return; }
+  // choose the adopted heir with the strongest bond
+  const heirRel=adoptedRels.sort((a,b)=>b.bond-a.bond)[0];
+  const heir=findP(G,heirRel.id);
+  if(!heir){ render(); return; }
+  // transfer two-thirds (rounded down), randomly selected, that the heir doesn't already have
+  const donorPowers=[...p.powers];
+  const transferCount=Math.floor(donorPowers.length*2/3);
+  // shuffle donor powers
+  for(let i=donorPowers.length-1;i>0;i--){ const j=rnd(i+1); [donorPowers[i],donorPowers[j]]=[donorPowers[j],donorPowers[i]]; }
+  if(!heir.powers) heir.powers=[];
+  const before=heir.powers.length;
+  let added=[];
+  for(const pw of donorPowers){
+    if(added.length>=transferCount) break;
+    if(!heir.powers.includes(pw)){ heir.powers.push(pw); added.push(pw); }
+  }
+  // synthesis can trigger on the heir from their new combined set
+  let synth=[];
+  POWER_SYNTHESIS.forEach(s=>{ if(heir.powers.includes(s.a)&&heir.powers.includes(s.b)&&!heir.powers.includes(s.out)){ heir.powers.push(s.out); synth.push(s.out); } });
+  setFlag(p,'transfusedHeir');
+  if(added.length){
+    log(`🩸 ${p.first} transfused ${added.length} of their ${donorPowers.length} powers into ${heir.first} — the adopted heir now carries the bloodline's gifts.`,'big');
+    synth.forEach(pw=>log(`✨ The transfused powers combined — ${heir.first} gained ${pw}!`,'big'));
+  } else {
+    log(`${heir.first} already carried everything ${p.first} could give.`,'muted');
+  }
+  render();
 }
 
 /* ============================================================
@@ -4595,6 +4848,8 @@ const CAREER_CHOICES = {
     O('💰','Sell tech to the highest bidder','+$$, ethically grey',0,()=>{ closeSheet(); const sale=200000+rnd(3000000); p.money+=sale; setFlag(p,'soldDangerousTech'); log(`${p.first} sold cutting-edge tech for ${money(sale)}. Who's buying… and why?`,'muted'); render(); }),
     O('🤖','Build a loyal creation','an assistant or guardian',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+3); if(!p.henchman){ p.henchman={name:'Subject-'+(1+rnd(99)),loyalty:100}; log(`${p.first} created ${p.henchman.name}, a loyal artificial being.`,'big'); } else log(`${p.first} improved their creation.`,'good'); render(); }),
     O('🏆','Publish for a Nobel Prize','+fame, legitimacy',0,()=>{ closeSheet(); if(p.stats.smarts>80&&chance(35)){ p.stats.fame=clamp(p.stats.fame+25); setFlag(p,'nobelLaureate'); worldEvent(p,`${p.first} won the Nobel Prize for a stunning breakthrough.`,{hope:true}); log(`🏆 ${p.first} won the NOBEL PRIZE. From mad genius to celebrated mind.`,'big'); } else log(`${p.first}'s work was deemed too dangerous to honor. For now.`,'muted'); render(); }),
+    ...(!hasFlag(p,'transfusionResearch') ? [O('🩸','Research power transfusion','unlock a way to pass powers',0,()=>{ closeSheet(); if(p.stats.smarts>62||chance(50)){ setFlag(p,'transfusionResearch'); log(`${p.first} cracked it: a blood transfusion that can transfer superpowers into another body. Forbidden science — but it works.`,'big'); } else { p.stats.health=clamp(p.stats.health-8); log(`${p.first}'s transfusion trials failed — and nearly killed a test subject. Back to the lab.`,'bad'); } render(); })] : []),
+    ...(hasFlag(p,'transfusionResearch') && (p.powers&&p.powers.length>0) && p.rels.some(r=>r.kind==='Child'&&r.alive && (findP(G,r.id)||{}).adopted) ? [O('🧬','Transfuse powers to adopted heir','passes ~2/3 of your powers',0,()=>{ closeSheet(); doPowerTransfusion(p); })] : []),
   ],
   proathlete: (p)=>[
     O('🏋️','Hit the training facility','+athletic',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+5); p.stats.health=clamp(p.stats.health-2); log(`${p.first} put in brutal hours in the gym. Sharper than ever.`,'good'); render(); }),
@@ -5638,14 +5893,14 @@ function openSelf(){
   ${assetLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Assets</div>${assetLines}</div>`:''}
   ${bizLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Businesses</div>${bizLines}</div>`:''}
   ${petLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Pets</div>${petLines}</div>`:''}
-  ${(p.powers&&p.powers.length)||p.gen>=2?`<div style="padding:14px 20px 0">
+  ${(p.powers&&p.powers.length)||p.gen>=2||(G.vault&&G.vault.length)?`<div style="padding:14px 20px 0">
     <div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">The bloodline's burden</div>
     <div style="background:var(--panel-2);border-radius:12px;padding:12px 14px;border:1px solid rgba(120,140,200,.25)">
-      <div style="font-size:13px;color:var(--sky)">Powers collected: <b>${p.powers.length}/${TOTAL_POWERS}</b></div>
+      <div style="font-size:13px;color:var(--sky)">Powers: <b>${p.powers.length}/${TOTAL_POWERS}</b> · <span style="color:var(--gold)">Vault: <b>${vaultRequiredCount()}/${REQUIRED_VAULT}</b></span></div>
       <div style="height:7px;background:rgba(255,255,255,.08);border-radius:5px;margin:7px 0;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(p.powers.length/TOTAL_POWERS*100)}%;background:linear-gradient(90deg,var(--sky),var(--gold))"></i></div>
-      <div style="font-size:11.5px;color:var(--ink-faint);line-height:1.5">This generation can still gain ${Math.max(0,2-(p.powersGained||0))} new power${(2-(p.powersGained||0))===1?'':'s'}. ${hasAllPowers(p)?'<b style="color:var(--gold)">All powers united — the bloodline is ready.</b>':'Pass them down; only a descendant with all '+TOTAL_POWERS+' can face Homelander.'}</div>
-      ${(p.powers.length>=6||hasAllPowers(p))&&!G.homelanderDefeated?`<button class="btn ${hasAllPowers(p)?'':'ghost'}" id="fightHL" style="margin-top:10px;${hasAllPowers(p)?'background:linear-gradient(90deg,var(--blood),var(--gold));color:#1a1208':''}">☄️ Confront Homelander</button>`:''}
-      ${G.homelanderDefeated?`<div style="font-size:12px;color:var(--gold);margin-top:8px">✅ Homelander was defeated by this bloodline.${G.newHomelanderIn!=null?` (a new one rises in ~${G.newHomelanderIn} years)`:''}</div>`:''}
+      <div style="font-size:11.5px;color:var(--ink-faint);line-height:1.5">${bloodlineReady(p)?'<b style="color:var(--gold)">All powers AND the vault are ready.</b> ':''}Everything Homelander-related lives in the ☄️ tab.</div>
+      <button class="btn ghost" id="hlTabBtn" style="margin-top:9px">☄️ Open the Homelander tab</button>
+      ${G.homelanderDefeated?`<div style="font-size:12px;color:var(--gold);margin-top:8px">✅ Defeated ${G.homelandersBeaten}×.${G.newHomelanderIn!=null?` A new one rises in ~${G.newHomelanderIn} years.`:''}</div>`:''}
     </div>
   </div>`:''}
   <div style="padding:14px 20px 0"><button class="btn ghost" id="history" style="margin-top:0">📜 Life history</button></div>
@@ -5656,55 +5911,442 @@ function openSelf(){
     if(rn) rn.onclick=()=>openRename(p);
     const hb=sh.querySelector('#history'); if(hb) hb.onclick=()=>openHistory(p);
     const wb=sh.querySelector('#worldhist'); if(wb) wb.onclick=()=>openWorldHistory();
-    const fb=sh.querySelector('#fightHL'); if(fb) fb.onclick=()=>confrontHomelander(p);
+    const ht=sh.querySelector('#hlTabBtn'); if(ht) ht.onclick=()=>{ closeSheet(); openHomelander(); };
   });
 }
-// ===== THE SECRET FIGHT: only a descendant with ALL powers can win =====
-function confrontHomelander(p){
+function openVault(p){
   closeSheet();
-  const ready=hasAllPowers(p);
-  const warn = ready
-    ? `${p.first} carries all ${TOTAL_POWERS} powers of the bloodline — everything Homelander has. For the first time, he can be matched. This is what the generations were for.`
-    : `${p.first} has only ${p.powers.length} of ${TOTAL_POWERS} powers. Homelander has them all. To face him now is to die — and pass the burden to the next generation. Are you sure?`;
-  const html=`<div class="grab"></div>
-    <div style="text-align:center;font-size:46px;margin:6px 0">☄️</div>
-    <h3 style="text-align:center">Confront Homelander</h3>
-    <p style="padding:6px 22px 14px;color:var(--ink-dim);font-size:14.5px;line-height:1.6;text-align:center">${warn}</p>`;
+  const reqList=VAULT_ITEMS.filter(v=>v.req);
+  const optList=VAULT_ITEMS.filter(v=>!v.req);
+  const row=v=>{ const have=vaultHas(v.id); return `<div style="display:flex;gap:9px;align-items:flex-start;padding:7px 0;opacity:${have?1:0.5}">
+    <div style="font-size:20px;width:26px;text-align:center">${have?v.emoji:'🔒'}</div>
+    <div style="flex:1"><div style="font-size:13.5px;color:${have?'var(--gold)':'var(--ink-dim)'}">${v.name}${have?'':' <span style=\"font-size:11px;color:var(--ink-faint)\">— not yet secured</span>'}</div>
+    <div style="font-size:11.5px;color:var(--ink-faint);line-height:1.45">${have?v.desc:'Earned at the peak of: '+careerLabel(v.career)}</div></div></div>`; };
+  const html=`<div class="grab"></div><h3>🗝️ The Vault</h3>
+    <p class="hint">Items your ancestors gathered to one day end Homelander. Secured at the peak of specific careers, across generations.</p>
+    <div style="padding:4px 20px">
+      <div style="font-size:12px;color:var(--gold);font-variant:small-caps;letter-spacing:1.5px;margin:6px 0">Required — ${vaultRequiredCount()}/${REQUIRED_VAULT}</div>
+      ${reqList.map(row).join('')}
+      <div style="font-size:12px;color:var(--sky);font-variant:small-caps;letter-spacing:1.5px;margin:14px 0 6px">Optional — ${vaultOptionalCount()}/${optList.length} <span style="color:var(--ink-faint)">(better odds & richer fight)</span></div>
+      ${optList.map(row).join('')}
+    </div>`;
+  sheet(html);
+}
+function careerLabel(k){ if(k==='governor')return 'Politician (Governor)'; const c=CAREER(k); return c?c.l:k; }
+
+/* ============================================================
+   THE HOMELANDER TAB — everything about the endgame lives here
+   ============================================================ */
+function homelanderTabUnlocked(p){
+  return (p.powers&&p.powers.length>0) || p.gen>=2 || (G.vault&&G.vault.length>0) || G.homelandersBeaten>0;
+}
+function openHomelander(){
+  const p=me();
+  const reqHave=vaultRequiredCount(), optHave=vaultOptionalCount();
+  const aw=awarenessLevel();
+  const awColor=['var(--sage)','var(--gold)','var(--rose)','var(--blood)'][aw];
+  let html=`<div class="grab"></div><h3>☄️ Homelander</h3>
+    <p class="hint">The god-tyrant who rules this world. Your bloodline's purpose, generation by generation.</p>
+    <div style="padding:2px 20px">`;
+  // progress
+  html+=`<div style="background:var(--panel-2);border-radius:12px;padding:12px 14px;border:1px solid rgba(120,140,200,.25);margin-bottom:10px">
+    <div style="font-size:13px;color:var(--sky)">Powers: <b>${p.powers.length}/${TOTAL_POWERS}</b> <span style="color:var(--ink-faint);font-size:11px">(this gen can gain ${Math.max(0,2-(p.powersGained||0))} more)</span></div>
+    <div style="height:6px;background:rgba(255,255,255,.08);border-radius:5px;margin:6px 0;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(p.powers.length/TOTAL_POWERS*100)}%;background:linear-gradient(90deg,var(--sky),var(--gold))"></i></div>
+    <div style="font-size:13px;color:var(--gold)">Vault: <b>${reqHave}/${REQUIRED_VAULT}</b> required${optHave?` · +${optHave} optional`:''}</div>
+    <div style="height:6px;background:rgba(255,255,255,.08);border-radius:5px;margin:6px 0;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(reqHave/REQUIRED_VAULT*100)}%;background:linear-gradient(90deg,var(--blood),var(--gold))"></i></div>
+    <div style="font-size:12px;margin-top:5px">Bloodline awareness: <b style="color:${awColor}">${AWARENESS_LEVELS[aw]}</b></div>
+  </div>`;
   const opts=[];
-  opts.push(O(ready?'⚔️':'💀', ready?'Face him as an equal':'Face him anyway','the reckoning',0,()=>{ closeSheet(); resolveHomelanderFight(p); }));
-  opts.push(O('🚪','Not yet — walk away','live to pass it on',0,()=>{ closeSheet(); render(); }));
+  // VICTORY STATE
+  if(G.homelanderDefeated){
+    html+=`<div style="background:rgba(217,164,65,.12);border-radius:12px;padding:12px 14px;border:1px solid var(--gold);margin-bottom:10px">
+      <div style="font-size:13px;color:var(--gold)">✅ This bloodline has defeated Homelander ${G.homelandersBeaten}× ${G.newHomelanderIn!=null?`<br><span style="color:var(--ink-dim);font-size:12px">A new Homelander rises in ~${G.newHomelanderIn} years. Rebuild.</span>`:''}</div></div>`;
+  }
+  // SUB-BOSSES
+  opts.push(OH('— Vought\'s lieutenants —'));
+  SUB_BOSSES.forEach(sb=>{
+    const defeated=subBossDefeated(sb.id);
+    const unlocked=p.powers.length>=sb.threshold;
+    if(defeated){
+      opts.push(O(sb.emoji, sb.name+' — defeated', 'a lieutenant down', 0, ()=>{}, true));
+    } else if(unlocked){
+      opts.push(O(sb.emoji, 'Confront '+sb.name, sb.blurb(p).slice(0,60)+'…', 0, ()=>{ closeSheet(); startSubBossFight(p, sb); }));
+    } else {
+      opts.push(O('🔒', sb.name+' — locked', `appears at ${sb.threshold} powers`, 0, ()=>{}, true));
+    }
+  });
+  // THE FIGHT
+  if(!G.homelanderDefeated){
+    opts.push(OH('— The reckoning —'));
+    const ready=bloodlineReady(p);
+    opts.push(O(ready?'⚔️':'☄️', ready?'Confront Homelander':'Challenge Homelander', ready?'the bloodline is ready':'you are not ready — this means death', 0, ()=>{ closeSheet(); ready?fullConfrontation(p):prematureChallenge(p); }));
+  }
+  // VAULT + SYCOPHANT
+  opts.push(OH('— Intel & influence —'));
+  opts.push(O('🗝️','Open the vault',`${reqHave+optHave} items secured`,0,()=>{ closeSheet(); openVault(p); }));
+  opts.push(O('🎭','Play the sycophant','curry favor — it has uses',0,()=>{ closeSheet(); openSycophant(p); }));
+  html+='</div>';
   sheet(html+opts.join(''), sh=>bindOpts(sh));
 }
-function resolveHomelanderFight(p){
-  if(hasAllPowers(p)){
-    // VICTORY
-    G.homelanderDefeated=true;
-    G.newHomelanderIn=10; // a new Homelander rises in ~10 years
-    G.homelandersBeaten=(G.homelandersBeaten||0)+1;
-    const reward=50000000+rnd(200000000);
-    p.money+=reward; p.stats.fame=100; setFlag(p,'beatHomelander');
-    worldEvent(p, `${p.first} ${p.last} fought Homelander to the death — and WON. The tyrant who ruled the skies is gone. The world weeps with relief.`, {hope:true});
-    log(`☄️ ${p.first} DEFEATED HOMELANDER. ${TOTAL_POWERS} powers, one bloodline, ${G.gen} generations in the making. A reward of ${money(reward)} and eternal glory.`,'big');
-    // the brutal fight strips ~20 powers from the victor — the bloodline must rebuild
-    const lose=Math.min(20, Math.max(0, p.powers.length-2));
-    for(let i=0;i<lose;i++){ if(p.powers.length>2) p.powers.splice(rnd(p.powers.length),1); }
-    p.powersGained=2; // already maxed this generation
-    log(`The fight cost ${p.first} dearly — ${lose} powers burned out, lost to the bloodline. Only ${p.powers.length} remain. The work begins again.`,'bad');
-    homelanderVictoryScreen(p, reward);
-  } else {
-    // DEATH
-    p._causeOfDeath = `killed by Homelander, who had every power ${p.first} lacked`;
-    log(`☄️ Homelander barely noticed the challenge. ${p.first} never stood a chance without all ${TOTAL_POWERS} powers.`,'death');
-    die(p); render();
-  }
+// ===== SYCOPHANT OPTIONS — lower awareness, occasional easter eggs =====
+function openSycophant(p){
+  const html=`<div class="grab"></div><h3>🎭 Curry favor</h3>
+    <p class="hint">Publicly supporting Homelander makes the bloodline look harmless. He underestimates flatterers — and that can be used.</p>`;
+  const opts=[];
+  opts.push(O('💌','Send a letter of admiration','+sycophant',0,()=>{ closeSheet(); G.sycophant=(G.sycophant||0)+1;
+    if(chance(12)){ log(`📬 A reply came back, signed: "Thank you so much for your continued support. It genuinely means a lot. — Kevin (The Deep)". Kevin. His name is Kevin.`,'big'); }
+    else log(`${p.first} sent fawning fan mail to Homelander. Filed away somewhere.`,'muted'); render(); }));
+  opts.push(O('💰','Donate to Vought Cares™','+sycophant, -$',0,()=>{ closeSheet(); const c=Math.min(p.money,5000); p.money-=c; G.sycophant=(G.sycophant||0)+1;
+    if(chance(12)){ raiseAwareness(1); log(`🧨 Firecracker reposted your donation on FlameCast with a patriotic caption. Your face was briefly on her network. (Awareness rose.)`,'muted'); }
+    else log(`${p.first} donated ${money(c)} to Vought Cares™. Good optics.`,'muted'); render(); }));
+  opts.push(O('📱','Publicly defend him online','+sycophant, -awareness',0,()=>{ closeSheet(); G.sycophant=(G.sycophant||0)+1; lowerAwareness(1);
+    if(chance(12)){ log(`💎 Translucent logged your post: "Subject publicly supportive of Vought interests. Possible low-threat designation. Monitor." (Awareness lowered.)`,'muted'); }
+    else log(`${p.first} publicly defended Homelander. The bloodline looks harmless — exactly the point. (Awareness lowered.)`,'good'); render(); }));
+  opts.push(O('🚪','Never mind','',0,()=>{ closeSheet(); openHomelander(); }));
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
 }
-function homelanderVictoryScreen(p, reward){
+
+/* ===== POWER INTERACTION BEATS ===== */
+// Each beat: {need:[powers], text} for "you have it" success; the system also generates failure beats.
+const FIGHT_BEATS_SUCCESS = [
+  {need:['invisibility','x-ray vision'], t:`You vanish. His eyes sweep the block in an orange-red glow — but you can see him scanning, and you move before he locks on. He spins, one beat late.`},
+  {need:['telepathy','psychic shielding'], t:`You reach into his mind. The psychic shielding bounces his counter-push back at him. For three seconds you're inside his head — and you find the crack.`},
+  {need:['empathy'], t:`The empathy floods in. He's afraid — not of you, of losing, of being seen losing. You push it back at him, amplified. He pulls back. Just for a second. A second is everything.`},
+  {need:['energy absorption'], t:`His laser vision blazes — the kind that cuts through aircraft. You drink it. The heat pours into you, converting, building. He stops firing. His expression: recalculation.`},
+  {need:['time manipulation'], t:`Time slows to a crawl. You land eight clean hits in the stretched silence. Time snaps back. He staggers, bleeding from his lip. "You have time," he says, filing it away.`},
+  {need:['gravity manipulation'], t:`You triple the gravity around him. His knees BUCKLE — four full seconds he's fighting just to stand, and you use all of them.`},
+  {need:['duplication'], t:`You split into three. He's fast, but even he can only track so many of you at once. Two of you land hits while he chases the third.`},
+  {need:['density control'], t:`You go diamond-hard. His full-force blow lands — and glances off. He's never hit something that didn't move. He hesitates.`},
+  {need:['probability manipulation'], t:`His attacks go slightly wide. Not by much — just by the margin that matters. Yours keep finding the gap. Over the exchange, it compounds.`},
+  {need:['biological mimicry'], t:`At the instant he uses his strength, you copy it exactly. For one impossible moment, you match him at his own peak — and he feels it.`},
+  {need:['weather control'], t:`The sky answers you. Lightning arcs down, fog swallows the block. His laser vision in a storm is as dangerous to him as to you.`},
+  {need:['precognition','super speed'], t:`Every attack arrives with a preview. You see the hit before he throws it, and you're already gone.`},
+  {need:['cryokinesis'], t:`You flash-freeze the air around him. For three seconds he's locked in ice. Three seconds you spend well.`},
+  {need:['sonic scream','super hearing'], t:`You tune the scream to his exact sensitivity. The sound that barely tickles you drops him to one knee.`},
+  {need:['telekinesis'], t:`Debris, weapons, the man himself — all float at your command. He's strong, but he can't punch what won't let him reach the ground.`},
+];
+// counter pairs: if you lack the counter, his power wins the beat (used in premature fights)
+const FIGHT_BEATS_FAIL = [
+  {his:'x-ray vision', t:`You turn invisible. He tilts his head, his eyes sweep the block in an orange-red glow, and he finds you in under two seconds. "Cute trick," he says. "You're the third person who's tried that."`},
+  {his:'laser vision', t:`You throw up a force field. His eyes blaze. Your field holds for 1.4 seconds before the laser cuts through. 1.4 seconds is not enough.`},
+  {his:'psychic shielding', t:`You reach for his mind — and hit a wall. He shuts you out, and worse, he uses what he read in the instant before you were blocked.`},
+  {his:'super speed', t:`He goes faster than anything — faster than you can track, a full-velocity blur. You needed one more second. You don't have it.`},
+  {his:'super endurance', t:`You hit him with everything. He shrugs it off in a single second and keeps coming, tireless, while you tire.`},
+];
+function pickFightBeats(p, count){
+  const have=new Set(p.powers||[]);
+  const out=[];
+  // success beats the character can actually perform
+  const usable=FIGHT_BEATS_SUCCESS.filter(b=>b.need.every(n=>have.has(n)));
+  const shuffled=[...usable].sort(()=>Math.random()-0.5);
+  for(const b of shuffled){ if(out.length>=count) break; out.push({text:b.t, powers:b.need, ok:true}); }
+  return out;
+}
+// helper: render a multi-paragraph cinematic screen with a single continue button
+function cinemaScreen(title, emoji, paragraphs, btnLabel, onClose, accent){
+  const body=paragraphs.map(t=>`<p style="color:var(--ink-dim);font-size:14px;line-height:1.65;margin:0 0 12px">${t}</p>`).join('');
+  const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:left;max-height:calc(100vh - 36px);overflow-y:auto">
+    <div style="text-align:center;font-size:50px;margin:6px 0">${emoji}</div>
+    <h2 style="text-align:center;color:${accent||'var(--gold)'};margin:0 0 12px">${title}</h2>
+    ${body}
+    <button class="btn" id="cinClose" style="margin-top:8px;${accent?`background:${accent};color:#1a1208`:''}">${btnLabel}</button>
+  </div></div>`;
+  const wrap=document.createElement('div'); wrap.innerHTML=html; document.body.appendChild(wrap.firstChild);
+  const btn=document.querySelector('#cinClose'); if(btn) btn.onclick=()=>{ const m=document.querySelector('.cmodal'); if(m)m.remove(); if(onClose)onClose(); };
+}
+// ===== THE PREMATURE CHALLENGE — six tiers, always fatal, always informative =====
+function prematureChallenge(p){
+  const n=p.powers.length;
+  const heirNote=`The powers ${p.first} carried pass to the next heir.`;
+  let title='Challenge Homelander', emoji='☄️', paras=[], whNote='';
+  if(n<=8){
+    title='Vought Comes Instead'; emoji='📞';
+    paras=[`${p.first} puts out the call. Publicly, loudly. And waits.`,
+      `He doesn't come. A Vought International liaison calls forty minutes later. Very polite. Explains that drawing attention to yourself this way is not in your best interest.`,
+      `Two days later, ${p.first} is found dead. No cause determined. The official report says natural causes. Vought calls it a tragedy.`];
+    whNote=`${p.first} ${p.last} challenged Homelander's existence publicly and was silenced. No one connected the two events.`;
+  } else if(n<=16){
+    title='Eight Seconds'; emoji='💀';
+    const fail=pick(FIGHT_BEATS_FAIL);
+    paras=[`He shows up. He's briefly entertained.`, fail.t, `It's over in eight seconds. ${heirNote}`];
+    whNote=`${p.first} ${p.last} faced Homelander and lasted seconds. No civilians were harmed. Vought issued no comment.`;
+  } else if(n<=24){
+    title='One Step Back'; emoji='👊';
+    paras=[`${p.first} hits him. Actually hits him — the kind of blow that would end anyone else permanently.`,
+      `He staggers one step. ONE step. Then he looks at ${p.first} with something closer to curiosity than rage. "Huh," he says.`,
+      `Then he kills you. But he took a step back. ${heirNote}`];
+    whNote=`${p.first} ${p.last} made Homelander take a step back — documented only once before, by a 2019 weapons test. This bloodline is the second.`;
+  } else if(n<=34){
+    title='First Blood'; emoji='🩸';
+    const beats=pickFightBeats(p,2).map(b=>b.text);
+    paras=[...beats, `He's bleeding. Not much — a cut above his eye. He touches it and looks at the blood like an object he's never seen. "You've been preparing," he says. It isn't a compliment. It's recognition.`,
+      `He kills you the next second. But the footage spreads before Vought can contain it. ${heirNote}`];
+    whNote=`${p.first} ${p.last} drew blood from Homelander. Footage circulated before suppression. A small movement begins online, questioning his invincibility.`;
+    raiseAwareness(1);
+  } else if(n<=44){
+    title='Forty Seconds'; emoji='⏱️';
+    const beats=pickFightBeats(p,4).map(b=>b.text);
+    paras=[...beats, `For forty seconds, ${p.first} actually has him. Forty. Forty-one.`,
+      `Then he breaks free through sheer will. He should not be able to do that. He does it anyway. "Not yet," he says — to himself, not to you. ${heirNote}`];
+    whNote=`${p.first} ${p.last} came closer than anyone alive. The most-watched event of the age. Homelander gave no interviews for three years. Other powered individuals begin reaching out to the bloodline.`;
+    raiseAwareness(2);
+  } else {
+    title='One Thing Short'; emoji='🥀';
+    const beats=pickFightBeats(p,4).map(b=>b.text);
+    const missing = !hasPower(p,'psychic shielding') ? `Then you feel him in your mind. You didn't know he had that. You do now. Too late.`
+      : !hasPower(p,'time manipulation') ? `He goes faster than anything — faster than super speed — and you cannot track it. You needed one more second.`
+      : `The one capability the bloodline never gathered becomes the one opening he needs.`;
+    paras=[`${p.first} is winning. You know you're winning. You can feel it in every exchange.`, ...beats, missing,
+      `One power short. One vault item missing. ${heirNote}`];
+    whNote=`${p.first} ${p.last} fought Homelander to near-defeat and lost by a single missing element — the closest any individual has come in recorded history.`;
+    G.awareness=3; // HUNTED permanently
+  }
+  if(whNote) worldEvent(p, whNote, {fear:true});
+  p._causeOfDeath=`killed challenging Homelander before the bloodline was ready`;
+  cinemaScreen(title, emoji, paras, 'The bloodline endures', ()=>{ die(p); render(); }, 'var(--blood)');
+}
+// ===== SUB-BOSS FIGHTS =====
+function startSubBossFight(p, sb){
+  if(!G.subBossesSeen) G.subBossesSeen=[];
+  if(!G.subBossesSeen.includes(sb.id)) G.subBossesSeen.push(sb.id);
+  if(sb.id==='deep') fightDeep(p);
+  else if(sb.id==='translucent') fightTranslucent(p);
+  else if(sb.id==='firecracker') fightFirecracker(p);
+}
+function recordSubBossWin(p, sb, rewardId){
+  if(!G.subBossesDefeated) G.subBossesDefeated=[];
+  if(!G.subBossesDefeated.includes(sb.id)) G.subBossesDefeated.push(sb.id);
+  if(rewardId) storeInVault(rewardId);
+  setFlag(p,'beat_'+sb.id);
+}
+function fightDeep(p){
+  const have=new Set(p.powers||[]);
+  if(p.powers.length<10){
+    cinemaScreen('The Deep','🌊',[`He shows up and immediately senses you have less than he expected. "Okay," he says, visibly relieved. "This doesn't have to be a whole thing."`,
+      `He defeats ${p.first} without breaking a sweat — bruised ribs, wounded pride, but alive. He files it as "resolved," describing you as "a minor nuisance."`],
+      'Survive and learn', ()=>{ p.stats.health=clamp(p.stats.health-12); render(); }, 'var(--sky)');
+    return;
+  }
+  // which approaches work
+  const works=['electrokinesis','telepathy','hydrokinesis','empathy'].filter(x=>have.has(x));
+  let beat;
+  if(have.has('electrokinesis')) beat=`Water and electricity. He should have thought about the harbor. The arc jumps the salt water and he convulses, scrambling toward dry ground — the wrong direction for him.`;
+  else if(have.has('hydrokinesis')) beat=`He commands the water. You command it better. He turns to call the tide and finds it coming the wrong way. He stares at the ocean like it betrayed him.`;
+  else if(have.has('telepathy')) beat=`You reach into his mind: a man managing shame for decades. You don't even attack — you just hold the mirror up. "Stop that," he says. His voice cracks.`;
+  else if(have.has('empathy')) beat=`The empathy floods in. Not cruelty — exhaustion. He's been doing this a very long time and he is so tired. He doesn't want to hurt you. He wants someone to tell him he doesn't have to.`;
+  else beat=null;
+  if(!beat){
+    cinemaScreen('The Deep','🌊',[`"I was told to deal with you," he says. "I'd really rather not."`,
+      `You don't have what it takes to corner him. He defeats you, almost apologetic. "I'm going to file this as a warning. You get one of those. Don't make me come back." He disappears into the water.`],
+      'Survive', ()=>{ p.stats.health=clamp(p.stats.health-10); render(); }, 'var(--sky)');
+    return;
+  }
+  // the negotiation choice
+  cinemaScreen('The Deep','🌊',[`He shows up in civilian clothes — the first tell. "I was told to deal with you," he says. "I'd really rather not. You seem reasonable."`,
+    beat,
+    `He's bleeding now, not badly. "Okay. You're better than I was told. I don't actually want to kill you — this situation is not of my making." He looks genuinely miserable.`],
+    'Decide his fate', ()=>{ deepNegotiation(p); }, 'var(--sky)');
+}
+function deepNegotiation(p){
+  const html=`<div class="grab"></div><div style="text-align:center;font-size:42px">🌊</div><h3 style="text-align:center">The Deep is beaten</h3>
+    <p style="padding:6px 22px 12px;color:var(--ink-dim);font-size:14px;line-height:1.6;text-align:center">He'd rather talk than fight. What do you do?</p>`;
+  const opts=[];
+  opts.push(O('🌊','Finish the fight','secure the aquatic network',0,()=>{ closeSheet(); recordSubBossWin(p, SUB_BOSSES[0], 'aquanet'); lowerAwareness(0);
+    cinemaScreen('Victory','🌊',[`He retreats into deep water, not seen publicly for months. Vought issues a terse statement.`,`You've secured Vought's Aquatic Network — off-grid underwater routes that will get a coalition unit to the final fight undetected.`],'Continue',()=>render(),'var(--gold)'); }));
+  opts.push(O('🤝','Hear him out','a better reward — his intel',0,()=>{ closeSheet(); setFlag(p,'deepAllianceFormed'); recordSubBossWin(p, SUB_BOSSES[0], 'deepfile');
+    cinemaScreen('An Unlikely Ally','🤝',[`He's scared of Homelander too. Has been for years. He can't defect openly — Vought would end him — but he can leave things in places. Share what he sees.`,`He becomes an intelligence asset. You've secured The Deep's File: a daily-contact psychological profile of Homelander, more useful than any map. When the final fight comes, he'll be in the coalition.`],'Continue',()=>render(),'var(--gold)'); }));
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+function fightTranslucent(p){
+  const have=new Set(p.powers||[]);
+  if(p.powers.length<20){
+    cinemaScreen('Translucent','💎',[`You can't see him. He's been in your space for four minutes before you realize it. You swing and hit air.`,
+      `"Interesting," he says. Then he breaks two of your ribs from an angle you never tracked, and leaves. No theatrics. He files a complete profile on your bloodline with Vought before you reach the hospital.`],
+      'Survive', ()=>{ p.stats.health=clamp(p.stats.health-15); raiseAwareness(1); render(); }, 'var(--rose)');
+    return;
+  }
+  // the puzzle: only certain powers penetrate his diamond skin
+  const keys=['electrokinesis','phasing','telekinesis','sonic scream','pyrokinesis','gravity manipulation'];
+  const usable=keys.filter(k=>have.has(k) && (k!=='sonic scream' || have.has('super hearing')));
+  if(!usable.length){
+    cinemaScreen('Translucent','💎',[`You know he's here. You can't see him. "You called this meeting," he says, bored.`,
+      `Your hits bounce off something like concrete. "Interesting choice," he says from a new position. You never find the way in.`,
+      `"Come back when you have something that works," he says. He's not mocking. He's sincere. Your character survives. Your pride doesn't.`],
+      'Survive', ()=>{ p.stats.health=clamp(p.stats.health-8); render(); }, 'var(--rose)');
+    return;
+  }
+  let beat;
+  if(have.has('phasing')) beat=`You reach through the skin — and there's no carbon on the inside. Just a person. He goes still. No one has ever done this.`;
+  else if(have.has('electrokinesis')) beat=`Carbon conducts electricity better than it should. He flickers visible in the arc, crackling blue-white, and makes a sound for the first time. "You did your research," he says. Not bored anymore.`;
+  else if(have.has('telekinesis')) beat=`You find a gap — the mouth, the nostrils — and push. His skin is impervious. His lungs are not. He becomes visible immediately, hands up.`;
+  else if(have.has('sonic scream')) beat=`You find the frequency by instinct honed over generations. The carbon lattice vibrates wrong. He becomes visible in pieces — arm, torso, all of him, crouching, not happy about it.`;
+  else if(have.has('gravity manipulation')) beat=`You don't need to touch the skin at all. You just make him weigh ten tons. He sinks to his knees, visible, pinned.`;
+  else beat=`Sustained heat builds inside the shell even as the outside holds. He breaks cover, smoking.`;
+  cinemaScreen('Translucent','💎',[`You know he's here. You can't see him. "You called this meeting," he says from your left, almost bored.`,
+    beat,
+    `Without the invisibility he's just a man — capable, dangerous, but you've been building toward this for twenty generations. He's a test, not the test.`,
+    `"Noted," he says when he's beaten, like he's logging it. Then: complete professionalism. He gives up.`],
+    'Claim the advantage', ()=>{ recordSubBossWin(p, SUB_BOSSES[1], 'blindspot'); lowerAwareness(1);
+      log(`💎 Translucent is down. Homelander has lost his primary surveillance asset — your bloodline can finally operate unwatched.`,'big');
+      render(); }, 'var(--gold)');
+}
+function fightFirecracker(p){
+  const have=new Set(p.powers||[]);
+  if(p.powers.length<30){
+    cinemaScreen('Firecracker','🧨',[`She opens FlameCast before the fight starts. "Ladies and gentlemen, I have located the individual Vought has been tracking. As you can see —"`,
+      `She beats you. On camera. The blast radius is larger than you were prepared for. You survive with moderate injuries. The footage airs for three weeks. The world now has video of you losing.`],
+      'Survive', ()=>{ p.stats.health=clamp(p.stats.health-14); raiseAwareness(1); render(); }, 'var(--blood)');
+    return;
+  }
+  // physical beat
+  let physBeat;
+  if(have.has('energy absorption')) physBeat=`She detonates a full-radius blast. You drink the shockwave. She stares. "What did you just do?" Then, to the camera: "…technical difficulties."`;
+  else if(have.has('force fields')) physBeat=`The detonation hits your field and dissipates. "Good field," she says, professionally, and adjusts the next one.`;
+  else if(have.has('weather control')) physBeat=`A downdraft disperses each blast before it lands. She's been setting off explosions in a hurricane. "That's not — that's not fair."`;
+  else if(have.has('probability manipulation')) physBeat=`Every blast goes slightly wide. She's never missed at this range. She checks the device. It's fine. She fires again. Wide.`;
+  else physBeat=`Her explosions are real and they hurt, but you weather them and close the distance.`;
+  // media battle
+  const mediaWin = have.has('technopathy')||have.has('telepathy')||have.has('mind control')||(p.onSocial&&p.socialFollowers>200000&&p.stats.fame>50);
+  let mediaBeat;
+  if(have.has('technopathy')) mediaBeat=`You reach into the broadcast signal and reroute it. FlameCast suddenly shows your footage instead of hers. "Hey — cut the feed!" she shouts. No one can.`;
+  else if(have.has('telepathy')||have.has('mind control')) mediaBeat=`You don't touch the camera. You touch the producer. The feed cuts. "What are you doing?" she demands. "Taking a break," he says, mildly.`;
+  else if(p.onSocial&&p.socialFollowers>200000&&p.stats.fame>50) mediaBeat=`Your counter-stream goes live. Your following is bigger than hers. For the first time her viewer count drops in real time while she's broadcasting.`;
+  else mediaBeat=`FlameCast runs the whole fight. You win physically — but the narrative is hers, and she's good at her job. The world sees a Vought hero defending herself.`;
+  recordSubBossWin(p, SUB_BOSSES[2], 'counternarr');
+  if(!mediaWin) setFlag(p,'firecrackerMediaLost');
+  cinemaScreen('Firecracker','🧨',[`She's already broadcasting. "This is the individual responsible for the attacks on Vought personnel," she tells millions. She believes it. That's what makes her dangerous.`,
+    physBeat, mediaBeat,
+    `She's down. She looks at the camera and says the first genuine thing all fight: "He's going to lose." Not to you. To whoever's watching. Then she's done.`,
+    mediaWin?`Her network is yours now — The Counter-Narrative will amplify the Broadcast when the real fight comes.`:`You took her network, but the story got away from you — the Counter-Narrative will work, just not at full strength.`],
+    'Claim the network', ()=>{ log(`🧨 FlameCast is yours. The media front protecting Homelander is gone.`,'big'); render(); }, 'var(--gold)');
+}
+// ===== THE FULL CONFRONTATION — multi-phase, with a crisis choice =====
+function fullConfrontation(p){
+  const hunted=awarenessLevel()>=3;
+  const sycophant=(G.sycophant||0)>=3;
+  const allSubs=(G.subBossesDefeated||[]).length>=3;
+  // PHASE 0 + 1
+  const ancestor = bloodlineFirstVaultAncestor();
+  let arrival = hunted
+    ? `He already knows. He's known for years. He arrives angry instead of curious — which is worse; anger in him tends to be accurate. "I've been watching your family a long time. You want to know what I found? Impressive. And still not enough."`
+    : `He lands across from you, taking in the scene — the coalition, the cameras, the setup. "You've been busy," he says. There's something in his voice just before respect, when someone won't admit what it is yet.`;
+  if(allSubs) arrival+=` He surveys it all and — for the first time in this — he looks genuinely alone.`;
+  if(sycophant) arrival+=` He almost smiles. "You used to send me fan mail." He's underestimating you. Good.`;
+  const phase1=[`${ancestor}`, arrival, `The Broadcast cuts on. Every screen in the world shows this moment. He glances up, sees himself — and the performance begins to fracture.`];
+  cinemaScreen('The Confrontation','☄️', phase1, 'The exchanges begin', ()=>confrontationPhase2(p), 'var(--gold)');
+}
+function bloodlineFirstVaultAncestor(){
+  // find the earliest stored vault contributor name from history if tracked, else generic
+  return `Generations ago, an ancestor stored the first piece of this. They never saw this moment coming. Neither did the dozens who followed. ${me().first} is here because of all of them.`;
+}
+function confrontationPhase2(p){
+  const beats=pickFightBeats(p, 5).map(b=>b.text);
+  if(vaultHas('blindspot')) beats.push(`He moves to counter — and can't. He didn't know about this one. Translucent isn't feeding him intel anymore.`);
+  if(beats.length<3) beats.push(`You trade blows that would each kill an army. Neither of you falls.`);
+  cinemaScreen('The Power Exchanges','⚔️', beats, 'The vault activates', ()=>confrontationPhase3(p), 'var(--sky)');
+}
+function confrontationPhase3(p){
+  const beats=[];
+  if(vaultHas('virus')||vaultHas('formula')) beats.push(`The compounds are working — his regeneration has slowed, his invulnerability dropped. The cut above his eye isn't closing. He's noticed too.`);
+  if(vaultHas('underground')) beats.push(`From three directions, the coalition moves through tunnels an ancestor spent two decades mapping. He can't track them all.`);
+  if(vaultHas('aquanet')) beats.push(`A unit arrives from the water — a route Vought never imagined anyone would use against them.`);
+  if(vaultHas('combatai')) beats.push(`The AI feeds you his next move before he makes it. His weight shifts right — he'll blast left. You're already moving.`);
+  if(vaultHas('broadcast')&&vaultHas('precedent')) beats.push(`Every screen is still on. The Precedent means Vought can't pull the feed. He can see himself considering defeat, live, and the world watching him consider it. The performance fractures.`);
+  if(vaultHas('counternarr')) beats.push(`The Counter-Narrative runs on Firecracker's old network. His public support is dropping in real time — he can feel it.`);
+  if(vaultHas('blackfile')) beats.push(`You know his break point: being made small in front of people. That's the lever. You use it.`);
+  if(vaultHas('orbital')) beats.push(`Military assets are in position. You don't fire — you don't need to. He has to keep one eye on the sky.`);
+  if(!beats.length) beats.push(`The vault items you carry turn the fight, piece by piece.`);
+  beats.push(`He's hurt. He's been hurt before — but not like this. Not by someone ready for everything he did. You have him. The question is what you do with it.`);
+  cinemaScreen('The Vault Activates','🗝️', beats, 'The crisis moment', ()=>confrontationCrisis(p), 'var(--gold)');
+}
+function confrontationCrisis(p){
+  const html=`<div class="grab"></div><div style="text-align:center;font-size:42px">☄️</div><h3 style="text-align:center">You have him</h3>
+    <p style="padding:6px 22px 12px;color:var(--ink-dim);font-size:14px;line-height:1.6;text-align:center">After ${G.gen} generations, the choice is yours. How does it end?</p>`;
+  const opts=[];
+  // Option A — End it (needs strength + gloves + invuln + regen)
+  if(hasPower(p,'super strength')&&vaultHas('gloves')&&hasPower(p,'invulnerability')&&hasPower(p,'regeneration')){
+    opts.push(O('💥','End it','kill him — the most complete victory',0,()=>{ closeSheet(); endHomelander(p,'kill'); }));
+  }
+  // Option B — The Vault (needs precedent + mandate + order)
+  if(vaultHas('precedent')&&vaultHas('mandate')&&vaultHas('order')){
+    opts.push(O('🔒','Imprison him','cage him — he lives, contained',0,()=>{ closeSheet(); endHomelander(p,'imprison'); }));
+  }
+  // Option C — Let the world see (needs broadcast + reel + documentary + manifesto)
+  if(vaultHas('broadcast')&&vaultHas('reel')&&vaultHas('documentary')&&vaultHas('manifesto')){
+    opts.push(O('📡','Let the world see','expose him — he retreats, weakened',0,()=>{ closeSheet(); endHomelander(p,'expose'); }));
+  }
+  // Option D — The Device (needs device + order) — last resort, always available if held
+  if(vaultHas('device')&&vaultHas('order')){
+    opts.push(O('☢️','The Device','end everything — you do not survive',0,()=>{ closeSheet(); endHomelander(p,'device'); }));
+  }
+  // fallback: if somehow no special combos, allow a basic finish
+  if(!opts.length){
+    opts.push(O('💥','Finish him','end the fight',0,()=>{ closeSheet(); endHomelander(p,'kill'); }));
+  }
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+function endHomelander(p, mode){
+  G.homelanderDefeated=true;
+  G.homelandersBeaten=(G.homelandersBeaten||0)+1;
+  const optCount=vaultOptionalCount();
+  const reward=50000000+rnd(200000000)+optCount*10000000;
+  p.money+=reward; p.stats.fame=100; setFlag(p,'beatHomelander');
+  const keepsVault=hasPower(p,'dimensional pocket');
+  let burn, closeLine, surviving=true, countdown=10;
+  if(mode==='kill'){ burn=20; countdown=10; p.stats.health=clamp(Math.min(p.stats.health,15)); setFlag(p,'killedHomelander');
+    closeLine=`"He's gone. It took ${G.gen} generations. It took one world. Don't let anyone tell you it wasn't worth it."`;
+    worldEvent(p,`${p.first} ${p.last} killed Homelander on a live global broadcast. The world will never be the same.`,{hope:true});
+  } else if(mode==='imprison'){ burn=15; countdown=12;
+    closeLine=`"He's in the Vault. The lock holds, for now. Your bloodline knows what to do if it doesn't."`;
+    worldEvent(p,`${p.first} ${p.last} took Homelander alive and sealed him in the rebuilt Vault. The world watches the incarceration.`,{hope:true});
+  } else if(mode==='expose'){ burn=10; countdown=15;
+    closeLine=`"He's still out there. But so is the footage. The world is different now — not fixed, but different. Your family made it different."`;
+    worldEvent(p,`${p.first} ${p.last} exposed Homelander to the entire world at once. A god who lost on camera, stripped of his corporate cover.`,{hope:true});
+  } else { // device
+    burn=50; countdown=14; surviving=false; setFlag(p,'usedDevice');
+    closeLine=`"${p.first} did not survive. The bloodline continues. That was always the point."`;
+    worldEvent(p,`${p.first} ${p.last} unleashed the Device. Homelander is gone. So is ${p.first}. The world is safe, and changed forever.`,{hope:true});
+  }
+  G.newHomelanderIn=countdown;
+  // burn powers (never below what device demands)
+  const lose=Math.min(burn, Math.max(0, p.powers.length-(mode==='device'?0:2)));
+  for(let i=0;i<lose;i++){ if(p.powers.length>(mode==='device'?0:2)) p.powers.splice(rnd(p.powers.length),1); }
+  p.powersGained=2;
+  // vault fate
+  if(!keepsVault && mode!=='device'){ G.vault=(G.vault||[]).filter(()=>chance(50)); }
+  else if(mode==='device'){ G.vault=[]; }
+  // build the ending screen
+  const paras=[
+    `It's over. ${G.gen} generations. Countless lives, each one living their own ordinary, extraordinary story — and quietly building toward this one.`,
+    `The fight burned away ${lose} of the bloodline's accumulated powers. What remains passes on.`,
+    closeLine,
+  ];
+  if(!surviving) paras.push(`In the epilogue, the heir continues the bloodline. The work begins again from near-nothing — but the world history carries the story forward.`);
+  homelanderEndingScreen(p, mode, reward, paras, surviving);
+}
+function homelanderEndingScreen(p, mode, reward, paras, surviving){
+  const accent=mode==='device'?'var(--blood)':'var(--gold)';
+  const emoji=mode==='kill'?'🏆':mode==='imprison'?'🔒':mode==='expose'?'📡':'☢️';
+  const body=paras.map(t=>`<p style="color:var(--ink-dim);font-size:14px;line-height:1.65;margin:0 0 12px">${t}</p>`).join('');
+  const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:left;max-height:calc(100vh - 36px);overflow-y:auto">
+    <div style="text-align:center;font-size:54px;margin:6px 0">${emoji}</div>
+    <h2 style="text-align:center;color:${accent};margin:0 0 4px">HOMELANDER ${mode==='kill'?'KILLED':mode==='imprison'?'IMPRISONED':mode==='expose'?'EXPOSED':'DESTROYED'}</h2>
+    <p style="text-align:center;color:var(--ink-faint);font-size:12px;margin:0 0 14px">Reward: ${money(reward)} · Defeated ${G.homelandersBeaten}× by this bloodline</p>
+    ${body}
+    <button class="btn" id="endClose" style="margin-top:8px;background:${accent};color:#1a1208">Carry on the bloodline</button>
+  </div></div>`;
+  const wrap=document.createElement('div'); wrap.innerHTML=html; document.body.appendChild(wrap.firstChild);
+  const btn=document.querySelector('#endClose'); if(btn) btn.onclick=()=>{ const m=document.querySelector('.cmodal'); if(m)m.remove();
+    if(!surviving){ p._causeOfDeath='gave their life to destroy Homelander with the Device'; die(p); }
+    render(); };
+}
+function homelanderVictoryScreen(p, reward, optCount){
   const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:center">
     <div style="font-size:60px;margin:10px 0">🏆</div>
     <h2 style="color:var(--gold);margin:0 0 6px">HOMELANDER DEFEATED</h2>
     <p style="color:var(--ink-dim);font-size:15px;line-height:1.6;padding:0 10px">
       After <b>${G.gen} generations</b>, the bloodline of ${p.first} ${p.last} did what no one could:
-      united all ${TOTAL_POWERS} powers and ended the tyrant.<br><br>
+      united all ${TOTAL_POWERS} powers and all ${REQUIRED_VAULT} vault items${optCount?` (plus ${optCount} more)`:''} — and ended the tyrant.<br><br>
       Reward: <b style="color:var(--gold)">${money(reward)}</b><br>
       Homelanders defeated by this line: <b>${G.homelandersBeaten}</b>
     </p>
