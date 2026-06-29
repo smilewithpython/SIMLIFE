@@ -491,15 +491,47 @@ const CAREER=k=>CAREERS.find(c=>c.k===k);
 
 // High-school clubs: joining gives yearly stat growth + a head-start flag for matching careers
 // Superpowers — granted to heroes and villains, expanding as they rise
-const POWERS=['super strength','flight','telepathy','invisibility','energy blasts','super speed','telekinesis','elemental control','shapeshifting','regeneration','technopathy','time manipulation','force fields','mind control','weather control','phasing','duplication','magnetism','sonic scream','laser vision'];
-function grantPower(p){
+const POWERS=['super strength','flight','telepathy','invisibility','energy blasts','super speed','telekinesis','elemental control','shapeshifting','regeneration','technopathy','time manipulation','force fields','mind control','weather control','phasing','duplication','magnetism','sonic scream','laser vision','heat vision','x-ray vision','super hearing','frost breath','density control','energy absorption','probability control','gravity control','molecular control','immortality'];
+const TOTAL_POWERS = POWERS.length; // 30 — the bloodline must acquire them all to beat Homelander
+// ===== HOMELANDER: an all-powerful narcissist who exists in this world, mostly ignoring everyone =====
+const HOMELANDER_DEEDS=[
+  n=>`Homelander incinerated ${n} protesters who "looked at him wrong," then smiled for the cameras.`,
+  n=>`Homelander accidentally sheared a passenger jet in half mid-flight. ${n} aboard. He called it "a tragedy, but not my fault."`,
+  ()=>`Homelander sank a naval submarine after it "disrespected" him in a press conference.`,
+  ()=>`Homelander dropped a ferry into the harbor when the captain didn't recognize him.`,
+  n=>`Homelander laser-visioned a city bridge in half during a tantrum. ${n} cars went into the river.`,
+  ()=>`Homelander demanded a national holiday in his honor — and vaporized the senator who objected.`,
+  n=>`Homelander "saved" a hostage situation by killing everyone in the building. ${n} dead, including the hostages.`,
+  ()=>`Homelander flew through a wind-turbine farm for fun, leveling the entire grid for a region.`,
+  ()=>`Homelander gave a two-hour speech about his own greatness while a wildfire he could have stopped burned.`,
+  n=>`Homelander crushed a luxury yacht like a soda can because the owner had a nicer one than his. ${n} missing.`,
+  ()=>`Homelander demanded the news only show flattering footage — anchors who refused simply vanished.`,
+  ()=>`Homelander punched a hole in a dam to "test his strength." The flooding is ongoing.`,
+  n=>`Homelander melted a stadium scoreboard mid-game because it showed a rival's highlight. ${n} hurt in the panic.`,
+  ()=>`Homelander adopted, then abandoned, an entire orphanage as a publicity stunt.`,
+  ()=>`Homelander froze a river solid with his breath, just to watch a town's economy collapse.`,
+  n=>`A building Homelander "inspected" mysteriously collapsed afterward. ${n} unaccounted for.`,
+];
+function homelanderBlurb(){
+  const d=pick(HOMELANDER_DEEDS);
+  const n=(10+rnd(900)).toLocaleString();
+  return d(n);
+}
+function grantPower(p, force){
   if(!p.powers) p.powers=[];
+  // a character can only acquire 2 NEW powers per generation (beyond what they inherited).
+  // `force` bypasses the cap (used by the Homelander victory transfer, etc.)
+  if(!force){
+    if((p.powersGained||0) >= 2) return null;
+  }
   const avail=POWERS.filter(x=>!p.powers.includes(x));
   if(!avail.length) return null;
   const pow=pick(avail); p.powers.push(pow);
+  if(!force) p.powersGained=(p.powersGained||0)+1;
   return pow;
 }
 function hasPower(p,name){ return p.powers && p.powers.includes(name); }
+function hasAllPowers(p){ return p.powers && p.powers.length>=TOTAL_POWERS; }
 // Which powers give a meaningful edge in which careers, and a short flavor line.
 // Each entry: power -> { careers:[...], stat?:statToBoost, line:(p)=>flavor }
 const POWER_CAREER = {
@@ -646,6 +678,7 @@ function blankPerson(opt={}){
     securityLevel:0,   // 0 normal, 1 max security, 2 superprison (the Vault)
     escapeAttempts:0,  // bribes/escapes tried at current incarceration
     powers:[],         // superpowers (hero/villain)
+    powersGained:0,    // new powers acquired this generation (cap 2)
     nemesis:null,      // {name, defeated} — hero's archenemy
     sidekick:null,     // {name, bond} — hero's partner
     heroRep:0,         // hero reputation / public trust (0-100)
@@ -735,6 +768,7 @@ function migrate(){
     if(p.securityLevel==null) p.securityLevel=0;
     if(p.escapeAttempts==null) p.escapeAttempts=0;
     if(!p.powers) p.powers=[];
+    if(p.powersGained==null) p.powersGained=0;
     if(p.nemesis===undefined) p.nemesis=null;
     if(p.sidekick===undefined) p.sidekick=null;
     if(p.heroRep==null) p.heroRep=0;
@@ -985,6 +1019,26 @@ $('#age').onclick=advanceQuarter;
 function advanceQuarter(){
   const p=me(); if(!p||!p.alive) return;
   if(p._busy) return;            // guard against double-press mid-modal
+  // ===== HOMELANDER lives in this world, mostly indifferent to us =====
+  // renewable loop: after a defeat, a new Homelander eventually rises
+  if(G.homelanderDefeated && G.newHomelanderIn!=null){
+    G.newHomelanderIn--;
+    if(G.newHomelanderIn<=0){
+      G.homelanderDefeated=false; G.newHomelanderIn=null;
+      worldEvent(p, `A new Homelander has risen — another being with all the powers of a god and none of the conscience. The world holds its breath again.`, {fear:true});
+      log(`⚡ A NEW HOMELANDER has risen. The bloodline's work is never truly done.`,'death');
+    }
+  }
+  if(!G.homelanderDefeated){
+    // 3% ambient news blurb of Homelander's latest atrocity (pure flavor)
+    if(chance(3)){ log(`📰 ${homelanderBlurb()}`,'muted'); }
+    // 0.05% chance Homelander accidentally kills the current character
+    if(Math.random()*100 < 0.05){
+      p._causeOfDeath = `caught in the path of one of Homelander's careless rampages`;
+      log(`☄️ Homelander, mid-tantrum, didn't even notice ${p.first} below. Wrong place, wrong time.`,'death');
+      die(p); render(); return;
+    }
+  }
   // clear the visible window for a fresh quarter
   clearWindow();
   const season=SEASONS[p.q||0];
@@ -1173,6 +1227,13 @@ function runYear(){
 
   // schooling transitions
   schoolTick(p);
+
+  // BLOODLINE POWERS: a descendant born with inherited powers may manifest a new latent ability
+  // as they grow (automatic path toward the 2-per-generation cap). Events provide the rest.
+  if(p.powers && p.powers.length>0 && (p.powersGained||0)<2 && p.powers.length<TOTAL_POWERS && p.age>=8 && chance(7)){
+    const pow=grantPower(p);
+    if(pow) log(`${p.first}'s inherited bloodline awakened a new power: ${pow}.`,'big');
+  }
 
   // pending delayed consequences from past choices come due
   resolvePending(p);
@@ -3058,22 +3119,22 @@ const CHOICE_EVENTS = [
     ]},
   // ========== SUPERPOWER ORIGINS (rare, for anyone) ==========
   { id:'power_accident', emoji:'⚡', title:'A freak accident', once:true,
-    when:p=>p.age>=12&&(!p.powers||!p.powers.length), weight:0.6,
+    when:p=>p.age>=12&&(p.powersGained||0)<2&&p.powers.length<TOTAL_POWERS&&((!p.powers||!p.powers.length)||chance(60)), weight:0.6,
     body:p=>`A bizarre accident — a lab spill, a strange storm, something that shouldn't be possible — leaves ${p.first} changed.`,
     choices:[
-      {label:'Embrace the change', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{happy:6}); if(pow)return `${p.first} woke up… different. They can ${pow} now. The world just shifted.`; return `${p.first} felt different, but nothing manifested.`;}},
+      {label:'Embrace the change', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{happy:6}); if(pow)return `${p.first} woke up… different. They can ${pow} now. The world just shifted.`; return `${p.first} felt different, but this generation's potential was already spent.`;}},
       {label:'Hide it, fear it', sub:'gain a power, -joy', effect:p=>{ const pow=grantPower(p); fx(p,{happy:-4}); setFlag(p,'hiddenPower'); if(pow)return `${p.first} discovered they can ${pow} — and told no one. A terrifying secret.`; return `Something stirred in ${p.first}, then went quiet.`;}},
       {label:'Get checked by doctors', sub:'safe', effect:p=>{ fx(p,{health:4}); return `${p.first} got examined. The doctors found nothing… or so they said.`;}},
     ]},
   { id:'power_mentor', emoji:'🧙', title:'A mysterious mentor', once:true,
-    when:p=>p.age>=16&&p.powers&&p.powers.length>=1&&p.powers.length<4, weight:1,
+    when:p=>p.age>=16&&p.powers&&p.powers.length>=1&&(p.powersGained||0)<2&&p.powers.length<TOTAL_POWERS, weight:1,
     body:p=>`A strange figure approaches ${p.first}, claiming they can unlock abilities ${p.first} never knew they had.`,
     choices:[
-      {label:'Train under them', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{smarts:3}); if(pow)return `Through grueling training, ${p.first} unlocked a new power: ${pow}.`; return `${p.first} trained hard, but had already reached their limit.`;}},
+      {label:'Train under them', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{smarts:3}); if(pow)return `Through grueling training, ${p.first} unlocked a new power: ${pow}.`; return `${p.first} trained hard, but this generation had already reached its limit.`;}},
       {label:'Refuse the stranger', sub:'safe', effect:p=>{ fx(p,{happy:2}); return `${p.first} walked away from the offer. Some doors are better left closed.`;}},
     ]},
   { id:'power_artifact', emoji:'🔮', title:'An ancient artifact', once:true,
-    when:p=>p.age>=18&&(p.money>100000||p.stats.fame>30), weight:0.5,
+    when:p=>p.age>=18&&(p.powersGained||0)<2&&p.powers.length<TOTAL_POWERS&&(p.money>100000||p.stats.fame>30||(p.powers&&p.powers.length>0)), weight:0.5,
     body:p=>`${p.first} comes into possession of an artifact humming with impossible energy.`,
     choices:[
       {label:'Harness its power', sub:'gain a power, risk', effect:p=>{ if(chance(25)){ fx(p,{health:-20}); return `The artifact's power overwhelmed ${p.first}. They nearly died touching it.`;} const pow=grantPower(p); fx(p,{fame:5}); if(pow)return `The artifact bonded with ${p.first}. They can ${pow} now.`; return `${p.first} felt its power, but couldn't hold it.`;}},
@@ -3742,7 +3803,8 @@ function die(p){
   const portVal = p.portfolio? (p.portfolio.low+p.portfolio.med+p.portfolio.high):0;
   const bizVal = (p.businesses||[]).reduce((s,b)=>s+b.value,0);
   p.estate = Math.max(0, p.money + assetVal + portVal + bizVal);
-  const cause = p.inPrison ? 'died behind bars'
+  const cause = p._causeOfDeath ? p._causeOfDeath
+    : p.inPrison ? 'died behind bars'
     : p.stats.health<=0 ? 'failing health'
     : p.age>78 ? pick(['old age','a peaceful sleep','a long life well-lived'])
     : pick(['an accident','a sudden illness','a heart that simply stopped','bad luck on an ordinary day']);
@@ -3797,7 +3859,8 @@ function lifeSummary(p){
   if(p.nemesis && p.nemesis.defeated>0) items.push(`Battled the villain ${p.nemesis.name}`);
   if((p.minions||0)>0) items.push(`Commanded a crew of ${p.minions}`);
   if(p.doomsdayLevel>=2) items.push('Held the world to ransom');
-  if(p.powers && p.powers.length) items.push(`Wielded powers: ${p.powers.slice(0,3).join(', ')}`);
+  if(hasFlag(p,'beatHomelander')) items.unshift('⚔️ DEFEATED HOMELANDER — saved the world');
+  if(p.powers && p.powers.length) items.push(`Wielded powers: ${p.powers.slice(0,3).join(', ')}${p.powers.length>3?` (+${p.powers.length-3} more)`:''}`);
   if(p.prisonRole==='shotcaller') items.push('Ran a prison from the inside');
   if(hasFlag(p,'tookTheThrone')||hasFlag(p,'wonGangWar')) items.push('Ruled the cellblock by force');
   if(hasFlag(p,'madeBones')||hasFlag(p,'coldBlooded')) items.push('Earned a fearsome underworld reputation');
@@ -4361,6 +4424,16 @@ function makeChild(p, opts={}){
   child.adopted=!!opts.adopted;
   child.fromFling=!!opts.fling;
   if(opts.otherParent) child.otherParent=opts.otherParent;
+  // POWER INHERITANCE: a child inherits the COMBINED powers of both parents (the bloodline accumulates).
+  // Adopted children don't inherit the bloodline's powers.
+  if(!opts.adopted){
+    const inherited=new Set(p.powers||[]);
+    // the other parent (a partner rel) may carry powers too
+    const mate=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
+    if(mate && mate.powers) mate.powers.forEach(pw=>inherited.add(pw));
+    if(opts.otherPowers) opts.otherPowers.forEach(pw=>inherited.add(pw));
+    if(inherited.size){ child.powers=[...inherited]; child.powersGained=0; }
+  }
   G.people.push(child);
   p.childrenIds.push(child.id);
   const kindLabel = opts.fling ? 'Child (out of wedlock)' : 'Child';
@@ -5565,6 +5638,16 @@ function openSelf(){
   ${assetLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Assets</div>${assetLines}</div>`:''}
   ${bizLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Businesses</div>${bizLines}</div>`:''}
   ${petLines?`<div style="padding:10px 20px 0"><div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">Pets</div>${petLines}</div>`:''}
+  ${(p.powers&&p.powers.length)||p.gen>=2?`<div style="padding:14px 20px 0">
+    <div style="font-size:11px;color:var(--ink-faint);font-variant:small-caps;letter-spacing:1.5px;margin-bottom:4px">The bloodline's burden</div>
+    <div style="background:var(--panel-2);border-radius:12px;padding:12px 14px;border:1px solid rgba(120,140,200,.25)">
+      <div style="font-size:13px;color:var(--sky)">Powers collected: <b>${p.powers.length}/${TOTAL_POWERS}</b></div>
+      <div style="height:7px;background:rgba(255,255,255,.08);border-radius:5px;margin:7px 0;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(p.powers.length/TOTAL_POWERS*100)}%;background:linear-gradient(90deg,var(--sky),var(--gold))"></i></div>
+      <div style="font-size:11.5px;color:var(--ink-faint);line-height:1.5">This generation can still gain ${Math.max(0,2-(p.powersGained||0))} new power${(2-(p.powersGained||0))===1?'':'s'}. ${hasAllPowers(p)?'<b style="color:var(--gold)">All powers united — the bloodline is ready.</b>':'Pass them down; only a descendant with all '+TOTAL_POWERS+' can face Homelander.'}</div>
+      ${(p.powers.length>=6||hasAllPowers(p))&&!G.homelanderDefeated?`<button class="btn ${hasAllPowers(p)?'':'ghost'}" id="fightHL" style="margin-top:10px;${hasAllPowers(p)?'background:linear-gradient(90deg,var(--blood),var(--gold));color:#1a1208':''}">☄️ Confront Homelander</button>`:''}
+      ${G.homelanderDefeated?`<div style="font-size:12px;color:var(--gold);margin-top:8px">✅ Homelander was defeated by this bloodline.${G.newHomelanderIn!=null?` (a new one rises in ~${G.newHomelanderIn} years)`:''}</div>`:''}
+    </div>
+  </div>`:''}
   <div style="padding:14px 20px 0"><button class="btn ghost" id="history" style="margin-top:0">📜 Life history</button></div>
   ${G.world&&G.world.length?`<div style="padding:8px 20px 0"><button class="btn ghost" id="worldhist" style="margin-top:0">🌍 World history</button></div>`:''}
   <div style="padding:8px 20px 0"><button class="btn ghost" id="rename" style="margin-top:0">✏️ Change name</button></div>`;
@@ -5573,7 +5656,67 @@ function openSelf(){
     if(rn) rn.onclick=()=>openRename(p);
     const hb=sh.querySelector('#history'); if(hb) hb.onclick=()=>openHistory(p);
     const wb=sh.querySelector('#worldhist'); if(wb) wb.onclick=()=>openWorldHistory();
+    const fb=sh.querySelector('#fightHL'); if(fb) fb.onclick=()=>confrontHomelander(p);
   });
+}
+// ===== THE SECRET FIGHT: only a descendant with ALL powers can win =====
+function confrontHomelander(p){
+  closeSheet();
+  const ready=hasAllPowers(p);
+  const warn = ready
+    ? `${p.first} carries all ${TOTAL_POWERS} powers of the bloodline — everything Homelander has. For the first time, he can be matched. This is what the generations were for.`
+    : `${p.first} has only ${p.powers.length} of ${TOTAL_POWERS} powers. Homelander has them all. To face him now is to die — and pass the burden to the next generation. Are you sure?`;
+  const html=`<div class="grab"></div>
+    <div style="text-align:center;font-size:46px;margin:6px 0">☄️</div>
+    <h3 style="text-align:center">Confront Homelander</h3>
+    <p style="padding:6px 22px 14px;color:var(--ink-dim);font-size:14.5px;line-height:1.6;text-align:center">${warn}</p>`;
+  const opts=[];
+  opts.push(O(ready?'⚔️':'💀', ready?'Face him as an equal':'Face him anyway','the reckoning',0,()=>{ closeSheet(); resolveHomelanderFight(p); }));
+  opts.push(O('🚪','Not yet — walk away','live to pass it on',0,()=>{ closeSheet(); render(); }));
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+function resolveHomelanderFight(p){
+  if(hasAllPowers(p)){
+    // VICTORY
+    G.homelanderDefeated=true;
+    G.newHomelanderIn=10; // a new Homelander rises in ~10 years
+    G.homelandersBeaten=(G.homelandersBeaten||0)+1;
+    const reward=50000000+rnd(200000000);
+    p.money+=reward; p.stats.fame=100; setFlag(p,'beatHomelander');
+    worldEvent(p, `${p.first} ${p.last} fought Homelander to the death — and WON. The tyrant who ruled the skies is gone. The world weeps with relief.`, {hope:true});
+    log(`☄️ ${p.first} DEFEATED HOMELANDER. ${TOTAL_POWERS} powers, one bloodline, ${G.gen} generations in the making. A reward of ${money(reward)} and eternal glory.`,'big');
+    // the brutal fight strips ~20 powers from the victor — the bloodline must rebuild
+    const lose=Math.min(20, Math.max(0, p.powers.length-2));
+    for(let i=0;i<lose;i++){ if(p.powers.length>2) p.powers.splice(rnd(p.powers.length),1); }
+    p.powersGained=2; // already maxed this generation
+    log(`The fight cost ${p.first} dearly — ${lose} powers burned out, lost to the bloodline. Only ${p.powers.length} remain. The work begins again.`,'bad');
+    homelanderVictoryScreen(p, reward);
+  } else {
+    // DEATH
+    p._causeOfDeath = `killed by Homelander, who had every power ${p.first} lacked`;
+    log(`☄️ Homelander barely noticed the challenge. ${p.first} never stood a chance without all ${TOTAL_POWERS} powers.`,'death');
+    die(p); render();
+  }
+}
+function homelanderVictoryScreen(p, reward){
+  const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:center">
+    <div style="font-size:60px;margin:10px 0">🏆</div>
+    <h2 style="color:var(--gold);margin:0 0 6px">HOMELANDER DEFEATED</h2>
+    <p style="color:var(--ink-dim);font-size:15px;line-height:1.6;padding:0 10px">
+      After <b>${G.gen} generations</b>, the bloodline of ${p.first} ${p.last} did what no one could:
+      united all ${TOTAL_POWERS} powers and ended the tyrant.<br><br>
+      Reward: <b style="color:var(--gold)">${money(reward)}</b><br>
+      Homelanders defeated by this line: <b>${G.homelandersBeaten}</b>
+    </p>
+    <p style="color:var(--ink-faint);font-size:13px;line-height:1.5;padding:8px 14px 0">
+      But the fight burned away most of the powers — and the world never stays safe for long.
+      A new Homelander will rise. ${p.first}'s descendants must gather the powers once more.
+      Life goes on; there are still careers to build, families to raise, and a legacy to leave.
+    </p>
+    <button class="btn" id="vicClose" style="margin-top:14px;background:linear-gradient(90deg,var(--blood),var(--gold));color:#1a1208">Carry on the bloodline</button>
+  </div></div>`;
+  const wrap=document.createElement('div'); wrap.innerHTML=html; document.body.appendChild(wrap.firstChild);
+  const btn=document.querySelector('#vicClose'); if(btn) btn.onclick=()=>{ const m=document.querySelector('.cmodal'); if(m)m.remove(); render(); };
 }
 function openHistory(p){
   closeSheet();
