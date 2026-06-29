@@ -2344,18 +2344,144 @@ const CHOICE_EVENTS = [
     body:p=>`Walking home late, ${p.first} is cornered. "Wallet. Now." A blade glints.`,
     choices:[
       {label:'Hand it over', sub:'safe but costly', effect:p=>{ const loss=Math.min(p.money,50+rnd(800)); fx(p,{money:-loss,happy:-6}); return `${p.first} handed over ${money(loss)} and walked away shaken but alive.`;}},
-      {label:'Fight back', sub:'risky', effect:p=>`${p.first} decides not to be a victim tonight…`,
-        then:p=>{ const combat = p.stats.athletic*0.7 + (p.job==='ufc'||p.job==='boxer'?45:0) + (p.powers&&p.powers.length?40:0) + (p.traits.includes('tough')?12:0);
+      {label:'Fight back', sub:'depends on who you are', effect:p=>`${p.first} decides not to be a victim tonight…`,
+        then:p=>{
+          // combat factors in athletics, fighting/action professions, powers, hero/villain/cop training, traits
+          const jobBonus = (p.job==='ufc'||p.job==='boxer')?45 : p.job==='wwe'?30 : (p.job==='soldier'||p.job==='agent')?38 : p.job==='cop'?30 : p.job==='firefighter'?15 : (p.job==='superhero'||p.job==='villain')?42 : 0;
+          const combat = p.stats.athletic*0.7 + jobBonus + (p.powers&&p.powers.length?40:0) + (p.traits.includes('tough')?12:0) + (hasFlag(p,'specialForces')?15:0);
           const win = combat>50 || chance(combat);
+          const villainous = p.job==='villain' || p.job==='crimelord' || hasFlag(p,'ruthless');
+          const heroic = p.job==='superhero' || p.job==='cop';
+          const winChoices = [
+            {label:'Make a citizen\'s arrest', sub:'+fame', effect:q=>{ fx(q,{fame:5,happy:6}); if(q.job==='cop'){fx(q,{fame:3});setFlag(q,'decoratedCop');} return `${q.first} pinned the mugger until police arrived. ${q.job==='cop'?'All in a day\'s work.':'A local hero.'}`;}},
+            {label:'Let them flee', sub:'+mercy', effect:q=>{ fx(q,{happy:4}); return `${q.first} let the terrified mugger run. Mercy.`;}},
+          ];
+          if(villainous){
+            winChoices.push({label:'Rob them instead', sub:'turn the tables', effect:q=>{ const take=Math.min(Math.max(0,200+rnd(1500)), 99999); fx(q,{money:take,happy:4}); q.heat=(q.heat||0)+4; setFlag(q,'ruthless'); return `${q.first} took the mugger's own cash and weapon — ${money(take)}. The predator became prey.`;}});
+            winChoices.push({label:'Recruit them', sub:'build your crew', need:q=>q.job==='villain'||q.job==='crimelord', effect:q=>{ q.minions=(q.minions||0)+1; q.minionPower=clamp((q.minionPower||0)+2); return `Impressed and terrified, the mugger now works for ${q.first}. One more minion.`;}});
+          }
+          if(heroic){
+            winChoices.push({label:'Show them a better path', sub:'+legacy', effect:q=>{ fx(q,{happy:8}); setFlag(q,'goodHeart'); if(q.job==='superhero')q.heroRep=clamp((q.heroRep||0)+5); return `${q.first} talked to the desperate mugger like a human. Maybe they'll change.`;}});
+          }
           return { emoji: win?'💪':'🩸', title: win?'You overpower them':'It goes wrong', body:q=>win?`${q.first} has the upper hand!`:`The mugger is stronger than expected.`,
-            choices: win? [
-              {label:'Make a citizen\'s arrest', sub:'+fame', effect:q=>{ fx(q,{fame:5,happy:6}); return `${q.first} pinned the mugger until police arrived. A local hero.`;}},
-              {label:'Let them flee', sub:'+mercy', effect:q=>{ fx(q,{happy:4}); return `${q.first} let the terrified mugger run. Mercy.`;}},
-            ] : [
+            choices: win? winChoices : [
               {label:'Keep fighting', sub:'desperate', effect:q=>{ if(chance(30)){fx(q,{health:-15,fame:3});return `Bloodied but unbowed, ${q.first} scared them off.`;} fx(q,{health:-35});return `${q.first} was stabbed and barely survived the night.`;}},
               {label:'Surrender now', sub:'cut losses', effect:q=>{ const loss=Math.min(q.money,100+rnd(1000)); fx(q,{money:-loss,health:-10}); return `${q.first} gave up ${money(loss)} and a few bruises.`;}},
             ]};
         }},
+      {label:'Try to talk your way out', sub:'+charm/+smarts', effect:p=>{ if(p.stats.charming>55||p.stats.smarts>60||chance(40)){ fx(p,{happy:2}); return `${p.first} stayed calm and talked the mugger down. They melted into the night.`;} const loss=Math.min(p.money,50+rnd(600)); fx(p,{money:-loss,happy:-4}); return `The mugger wasn't in a talking mood. ${p.first} lost ${money(loss)}.`;}},
+    ]},
+  // ========== STAT-GATED STREET ENCOUNTERS ==========
+  { id:'talent_scout', emoji:'🎬', title:'A talent scout', once:true,
+    when:p=>p.age>=16&&p.age<=40&&p.stats.looks>70&&p.job!=='moviestar'&&p.job!=='actor', weight:2.2,
+    body:p=>`A well-dressed stranger stops ${p.first} on the street. "Has anyone ever told you, you belong on screen? I'm a casting director."`,
+    choices:[
+      {label:'Take their card and audition', sub:'chase stardom', effect:p=>`${p.first} shows up to the audition, heart racing…`,
+        then:p=>({ emoji:'🎥', title:'The audition', body:q=>`The room is cold, the camera is rolling.`,
+          choices:[
+            {label:'Go for a movie career', sub:'big swing', effect:q=>{ if(q.stats.looks>72&&chance(60)){ takeJobSilent(q,'moviestar'); fx(q,{happy:12,fame:6}); return `${q.first} booked it and signed on as an actor. Hollywood calls.`;} fx(q,{happy:-4}); return `${q.first} didn't get the part, but caught the acting bug.`;}},
+            {label:'Try modeling instead', sub:'safer fit', effect:q=>{ if(q.stats.looks>70&&chance(65)){ takeJobSilent(q,'model'); fx(q,{happy:10,fame:4}); return `${q.first} signed with an agency as a model.`;} fx(q,{happy:-2}); return `The agency passed. The industry is fickle.`;}},
+          ]})},
+      {label:'It\'s probably a scam', sub:'+smarts', effect:p=>{ fx(p,{smarts:2}); if(chance(30)){ return `${p.first} walked off — and later saw the scout was legit. What if?`;} return `${p.first} trusted their gut. Probably dodged a con.`;}},
+      {label:'Not interested', sub:'+humility', effect:p=>{ fx(p,{happy:2}); return `${p.first} smiled and kept walking. Fame isn't everything.`;}},
+    ]},
+  { id:'sports_recruiter', emoji:'🏟', title:'A sports recruiter', once:true,
+    when:p=>p.age>=15&&p.age<=30&&p.stats.athletic>72&&!['nba','nfl','soccer','ufc','boxer'].includes(p.job), weight:2.2,
+    body:p=>`A recruiter watched ${p.first} at the gym. "You've got serious raw talent. Ever think about going pro?"`,
+    choices:[
+      {label:'Try out for a pro team', sub:'chase the dream', effect:p=>`${p.first} laces up for the tryout of a lifetime…`,
+        then:p=>({ emoji:'🏆', title:'The tryout', body:q=>`Scouts line the field, clipboards out.`,
+          choices:[
+            {label:'Go for the big leagues', sub:'basketball/football', effect:q=>{ if(q.stats.athletic>80&&chance(55)){ takeJobSilent(q, pick(['nba','nfl'])); fx(q,{happy:14,fame:8}); return `${q.first} made the roster. A professional athlete now!`;} fx(q,{happy:-4,athletic:2}); return `${q.first} fell just short, but trained harder than ever.`;}},
+            {label:'Try combat sports', sub:'fighting', effect:q=>{ if(q.stats.athletic>65&&chance(60)){ takeJobSilent(q, pick(['boxer','ufc'])); fx(q,{happy:10,fame:4}); return `${q.first} signed on as a fighter. Time to prove it in the ring.`;} fx(q,{health:-6}); return `A brutal sparring session ended the tryout early.`;}},
+          ]})},
+      {label:'Stay an amateur', sub:'+joy, +health', effect:p=>{ fx(p,{happy:6,health:3}); return `${p.first} kept sport a joy, not a job. No pressure, all fun.`;}},
+      {label:'Decline', sub:'nothing', effect:p=>{ return `${p.first} had other plans for their life.`;}},
+    ]},
+  { id:'academic_recruit', emoji:'🎓', title:'A professor takes notice', once:true,
+    when:p=>p.age>=15&&p.age<=35&&p.stats.smarts>74&&!['scientist','professor','madsci','doctor'].includes(p.job), weight:2,
+    body:p=>`A distinguished professor approaches ${p.first}. "Your mind is wasted out here. Have you considered serious research? Or a decathlon of the intellect — the academic olympiad?"`,
+    choices:[
+      {label:'Pursue a research career', sub:'the life of the mind', effect:p=>{ if(p.stats.smarts>76&&chance(60)){ takeJobSilent(p,'scientist'); fx(p,{happy:10,smarts:4}); return `${p.first} was fast-tracked into a research program. A scientist in the making.`;} fx(p,{smarts:3}); return `${p.first} wasn't ready to commit, but the idea took root.`;}},
+      {label:'Enter the academic olympiad', sub:'+smarts, +fame', effect:p=>{ if(p.stats.smarts>78&&chance(55)){ fx(p,{smarts:6,fame:5,happy:8}); setFlag(p,'olympiadChamp'); return `${p.first} won the academic olympiad. A genius, certified.`;} fx(p,{smarts:3,happy:2}); return `${p.first} competed admirably but didn't take gold.`;}},
+      {label:'Flattering, but no', sub:'+humility', effect:p=>{ fx(p,{happy:2}); return `${p.first} thanked them and went their own way.`;}},
+    ]},
+  { id:'street_musician', emoji:'🎸', title:'A busker needs a partner', 
+    when:p=>p.age>=14&&p.age<=45&&(hasFlag(p,'musical')||p.stats.charming>60), weight:1.6,
+    body:p=>`A street musician spots ${p.first} and waves them over. "You've got the look — wanna jump in for a song?"`,
+    choices:[
+      {label:'Join the performance', sub:'+joy, maybe more', effect:p=>{ fx(p,{happy:8}); const tips=rnd(120); fx(p,{money:tips}); if(hasFlag(p,'musical')&&chance(30)){ setFlag(p,'streetDiscovered'); return `${p.first} stole the show. A passerby filmed it — and it's spreading online.`;} return `${p.first} played to a delighted little crowd. ${money(tips)} in tips and a great memory.`;}},
+      {label:'Just toss them some money', sub:'+kindness', effect:p=>{ const give=Math.min(p.money,20); fx(p,{money:-give,happy:3}); return `${p.first} dropped some cash in the case and enjoyed the tune.`;}},
+      {label:'Walk on', sub:'nothing', effect:p=>{ return `${p.first} kept moving, the music fading behind them.`;}},
+    ]},
+  { id:'fortune_teller', emoji:'🔮', title:'A fortune teller beckons', 
+    when:p=>p.age>=16, weight:1.4,
+    body:p=>`A fortune teller in a beaded tent catches ${p.first}'s eye. "I see much in your future, traveler. Sit."`,
+    choices:[
+      {label:'Hear your fortune', sub:'+intrigue', effect:p=>{ const give=Math.min(p.money,30); fx(p,{money:-give}); const r=rnd(100); if(r<40){ fx(p,{happy:8}); return `She foresees great fortune and love. ${p.first} leaves walking on air.`;} if(r<75){ fx(p,{smarts:2}); return `Cryptic words ${p.first} will puzzle over for years.`;} fx(p,{happy:-4}); seed(p,1,'ominous_omen'); return `Her face darkened at the cards. She said nothing, and refunded the money.`;}},
+      {label:'Politely decline', sub:'nothing', effect:p=>{ return `${p.first} smiled and walked past the tent.`;}},
+    ]},
+  { id:'free_sample', emoji:'🧪', title:'A risky free sample', 
+    when:p=>p.age>=16&&p.age<=50, weight:1.4,
+    body:p=>`Someone outside a club offers ${p.first} a "free sample" of something to make the night unforgettable.`,
+    choices:[
+      {label:'Take it', sub:'risky thrill', effect:p=>{ if(chance(45)){ fx(p,{happy:10,health:-5}); if(chance(45))addAddiction(p,pick(['party_drugs','cocaine'])); return `${p.first} had a wild, blurry night. The comedown was rough.`;} fx(p,{health:-12,happy:-6}); return `It was laced with something nasty. ${p.first} ended the night in the ER.`;}},
+      {label:'Hard pass', sub:'+health', effect:p=>{ fx(p,{health:2}); return `${p.first} knew better and walked away clean.`;}},
+    ]},
+  { id:'pickup_charm', emoji:'😍', title:'A stranger is smitten', 
+    when:p=>p.age>=18&&p.age<=55&&!p.married&&(p.stats.looks>65||p.stats.charming>65), weight:2,
+    body:p=>`An attractive stranger works up the courage to approach ${p.first} at a café. "I had to say hi. Can I buy you a coffee?"`,
+    choices:[
+      {label:'Say yes', sub:'+romance maybe', effect:p=>{ if(chance(60)){ const sx=partnerSex(p); p.rels.push({name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:50+rnd(25),alive:true,id:nid()}); fx(p,{happy:12}); return `Sparks flew. ${p.first} has a new someone.`;} fx(p,{happy:4}); return `A pleasant chat, but no spark. Still, a nice afternoon.`;}},
+      {label:'Get their number for later', sub:'keep options open', effect:p=>{ fx(p,{happy:5}); seed(p,1,'maybe_date'); return `${p.first} took their number with a smile. Maybe someday.`;}},
+      {label:'Politely decline', sub:'+self-possession', effect:p=>{ fx(p,{happy:2}); return `${p.first} wasn't interested, but was flattered.`;}},
+    ]},
+  { id:'street_game', emoji:'🎲', title:'A street hustler\'s game', 
+    when:p=>p.age>=16&&p.money>=100, weight:1.5,
+    body:p=>`A fast-talking hustler runs a shell game on an upturned crate. "Easy money, friend — just follow the ball."`,
+    choices:[
+      {label:'Play to win', sub:'rigged, risky', effect:p=>{ const bet=Math.min(p.money,50+rnd(300)); fx(p,{money:-bet}); const odds = p.traits.includes('sly')?45 : p.stats.smarts>65?38 : 25; if(chance(odds)){ const win=bet*2; fx(p,{money:win,happy:6}); return `${p.first} actually beat the hustle and walked with ${money(win)}.`;} return `The ball was never under any cup. ${p.first} lost ${money(bet)}.`;}},
+      {label:'Spot the trick and call it out', sub:'+smarts', effect:p=>{ if(p.stats.smarts>60||chance(45)){ fx(p,{smarts:2,happy:4}); return `${p.first} caught the sleight of hand and the hustler slunk off.`;} return `${p.first} guessed wrong about the trick and got laughed at.`;}},
+      {label:'Keep walking', sub:'wise', effect:p=>{ fx(p,{smarts:1}); return `${p.first} knew a sucker's game when they saw one.`;}},
+    ]},
+  { id:'lost_tourist', emoji:'🗺', title:'A lost tourist', 
+    when:p=>p.age>=12, weight:1.3,
+    body:p=>`A flustered tourist with a giant map approaches ${p.first}, clearly lost and a little panicked.`,
+    choices:[
+      {label:'Walk them there yourself', sub:'+kindness', effect:p=>{ fx(p,{happy:6}); setFlag(p,'goodHeart'); if(chance(25)){const f=addFriend(p);return `${p.first} guided them all the way. They became unlikely friends — ${f.name.split(' ')[0]}.`;} return `${p.first} went out of their way to help. The tourist was endlessly grateful.`;}},
+      {label:'Give quick directions', sub:'+small good', effect:p=>{ fx(p,{happy:2}); return `${p.first} pointed the way and the tourist hurried off, relieved.`;}},
+      {label:'Pretend not to speak the language', sub:'avoid it', effect:p=>{ fx(p,{happy:-1}); return `${p.first} shrugged and walked off. Not their problem.`;}},
+    ]},
+  { id:'wallet_found', emoji:'💼', title:'A dropped wallet', 
+    when:p=>p.age>=10, weight:1.5,
+    body:p=>`${p.first} watches a stranger drop a fat wallet on the sidewalk and walk on, oblivious.`,
+    choices:[
+      {label:'Chase them down to return it', sub:'+integrity', effect:p=>{ fx(p,{happy:6}); setFlag(p,'goodHeart'); if(chance(30)){ const reward=50+rnd(300); fx(p,{money:reward}); return `The grateful stranger pressed ${money(reward)} into ${p.first}'s hand as thanks.`;} return `${p.first} returned it, no reward asked. The right thing.`;}},
+      {label:'Keep the cash', sub:'+$, -conscience', effect:p=>{ const take=100+rnd(600); fx(p,{money:take,happy:-3}); setFlag(p,'pettyCrime'); return `${p.first} pocketed ${money(take)} and tossed the wallet. A quiet guilt.`;}},
+      {label:'Leave it where it is', sub:'neutral', effect:p=>{ return `${p.first} left the wallet for someone else to deal with.`;}},
+    ]},
+  { id:'protest_march', emoji:'📢', title:'A protest blocks the street', 
+    when:p=>p.age>=16, weight:1.3,
+    body:p=>`${p.first} runs into a passionate protest filling the square. Someone hands them a sign.`,
+    choices:[
+      {label:'Join the cause', sub:'+conviction', effect:p=>{ fx(p,{happy:6}); setFlag(p,'activist'); if(chance(15)){ p.record.push('Arrested at protest'); fx(p,{fame:4}); return `${p.first} marched — and got briefly detained. A badge of honor, to some.`;} return `${p.first} marched for what they believe in. Energizing.`;}},
+      {label:'Watch from the side', sub:'+smarts', effect:p=>{ fx(p,{smarts:2}); return `${p.first} observed, sympathetic but uncommitted.`;}},
+      {label:'Find another route', sub:'avoid it', effect:p=>{ return `${p.first} slipped down a side street, away from it all.`;}},
+    ]},
+  { id:'high_roller', emoji:'🎰', title:'An invitation to the high-roller room', 
+    when:p=>p.age>=21&&p.money>=50000, weight:1.3,
+    body:p=>`At the casino, a host invites ${p.first} into the private high-stakes room. The buy-in is steep.`,
+    choices:[
+      {label:'Sit down at the big table', sub:'high risk', need:p=>p.money>=50000, effect:p=>{ const bet=Math.min(p.money,Math.round(p.money*0.2)); fx(p,{money:-bet}); const odds=p.traits.includes('lucky')?48:p.stats.smarts>65?42:35; if(chance(odds)){ const win=bet*2; fx(p,{money:win,happy:10,fame:3}); return `${p.first} read the table perfectly and walked away ${money(win-bet)} up.`;} fx(p,{happy:-8}); return `The cards were cruel. ${p.first} lost ${money(bet)} in one brutal night.`;}},
+      {label:'Play it cool and just watch', sub:'+smarts', effect:p=>{ fx(p,{smarts:2}); if(chance(25)){const f=addFriend(p);if(f)f.note='high roller';return `${p.first} rubbed shoulders with the elite and made a wealthy contact.`;} return `${p.first} soaked in the atmosphere without risking a dime.`;}},
+      {label:'Cash out and leave', sub:'+discipline', effect:p=>{ fx(p,{happy:2}); return `${p.first} knew when to walk away. Wise.`;}},
+    ]},
+  { id:'door_to_door', emoji:'🚪', title:'An opportunity at the door', 
+    when:p=>p.age>=20&&p.money>=500, weight:1.2,
+    body:p=>`A slick salesperson pitches ${p.first} on a "guaranteed" business opportunity — just a small buy-in to start.`,
+    choices:[
+      {label:'Buy in', sub:'probably a pyramid', effect:p=>{ const cost=Math.min(p.money,2000); fx(p,{money:-cost}); if(chance(20)){ const ret=cost*2; fx(p,{money:ret,happy:4}); return `Against the odds, ${p.first} actually made a little — ${money(ret)}.`;} fx(p,{happy:-6}); return `It was a pyramid scheme. ${p.first}'s ${money(cost)} evaporated.`;}},
+      {label:'See through the pitch', sub:'+smarts', effect:p=>{ fx(p,{smarts:3}); return `${p.first} recognized the scheme and shut the door, smiling.`;}},
     ]},
   // ========== MORE GENERAL ADULT EVENTS ==========
   { id:'midlife_crisis', emoji:'🏍', title:'A midlife crisis', once:true,
