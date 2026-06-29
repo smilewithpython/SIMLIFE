@@ -1371,6 +1371,7 @@ function fx(p, o){ // apply a bundle of stat/money changes, return summary
 function seed(p, dueInYears, kind, data){ p.seeds.push({dueAge:p.age+dueInYears, kind, data:data||{}}); }
 function setFlag(p,k,v=true){ p.flags[k]=v; }
 function hasFlag(p,k){ return !!p.flags[k]; }
+function clearFlag(p,k){ if(p.flags) delete p.flags[k]; }
 function addFriend(p, kind='Friend'){ const sx=makeSex(); const f={name:newFirst(sx)+' '+pick(LAST),kind,sex:sx,bond:45+rnd(30),alive:true,id:nid()}; p.rels.push(f); return f; }
 function bestFriend(p){ const fs=p.rels.filter(r=>r.kind==='Friend'&&r.alive); return fs.length?fs.sort((a,b)=>b.bond-a.bond)[0]:null; }
 
@@ -1407,6 +1408,132 @@ const CHOICE_EVENTS = [
       {label:'Stand up to them', sub:'risky, +respect', effect:p=>{ if(p.stats.athletic>50||chance(45)){ fx(p,{happy:8,athletic:3}); setFlag(p,'standsUp'); return `${p.first} stood their ground. The bully backed off.`;} fx(p,{health:-8,happy:-6}); return `It went badly — ${p.first} got hurt and humiliated.`; }},
       {label:'Tell a teacher', sub:'safe', effect:p=>{fx(p,{happy:2}); return `The school stepped in. It mostly stopped.`;}},
       {label:'Suffer quietly', sub:'-joy, plant a seed', effect:p=>{fx(p,{happy:-12,stress:10}); seed(p,8,'tough_skin'); return `${p.first} endured it alone. It left a mark.`;}},
+    ]},
+  // ---------- EARLY CHILDHOOD (daycare / preschool) ----------
+  { id:'daycare_start', emoji:'🧸', title:'First day of daycare', once:true,
+    when:p=>p.age>=2&&p.age<=4, weight:3,
+    body:p=>`${p.first}'s parents are dropping them at daycare for the first time. ${capFirst(p.first)} is NOT having it.`,
+    choices:[
+      {label:'Throw a screaming tantrum', sub:'cling to mom', effect:p=>{ fx(p,{happy:-3}); const ma=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); if(ma)ma.bond=clamp(ma.bond+4); return `${p.first} wailed until pickup. The parents felt awful.`;}},
+      {label:'Make a little friend', sub:'+joy', effect:p=>{ fx(p,{happy:6}); if(chance(60)){const f=addFriend(p);return `${p.first} found a buddy at daycare — ${f.name.split(' ')[0]}.`;} return `${p.first} settled in and had fun.`;}},
+      {label:'Bite another kid', sub:'uh oh', effect:p=>{ fx(p,{happy:2}); setFlag(p,'earlyTrouble'); return `${p.first} bit a classmate over a toy truck. The first incident report of many.`;}},
+    ]},
+  { id:'daycare_fight', emoji:'😤', title:'Trouble at preschool', 
+    when:p=>p.age>=3&&p.age<=6, weight:2,
+    body:p=>`Another kid knocked over ${p.first}'s block tower and laughed.`,
+    choices:[
+      {label:'Shove them down', sub:'+trouble', effect:p=>{ fx(p,{athletic:2}); setFlag(p,'earlyTrouble'); if(chance(40))return `${p.first} pushed back hard and got a time-out. A temper forms early.`; return `${p.first} stood up for themselves. The teacher sighed.`;}},
+      {label:'Rebuild it bigger', sub:'+smarts', effect:p=>{ fx(p,{smarts:4,happy:3}); return `${p.first} just built an even better tower. Unbothered.`;}},
+      {label:'Tell the teacher', sub:'+joy', effect:p=>{ fx(p,{happy:3}); return `The teacher sorted it out. ${p.first} felt heard.`;}},
+    ]},
+  // ---------- SCHOOL: fights, pranks, mischief ----------
+  { id:'school_fight', emoji:'🥊', title:'A fight at school', 
+    when:p=>p.age>=8&&p.age<=17&&p.inSchool, weight:2,
+    body:p=>`A kid's been talking trash about ${p.first} all week. Today they shoved them in the hall.`,
+    choices:[
+      {label:'Fight back', sub:'depends on toughness', effect:p=>`${p.first} squares up…`,
+        then:p=>({ emoji:'💢', title:'It\'s on!', body:q=>`The hallway circles up, phones out. How does it go?`,
+          choices:[
+            {label:'Swing first', sub:'go all in', effect:q=>{ const win = q.stats.athletic>55 || chance(40+q.stats.athletic*0.3) || hasFlag(q,'standsUp'); if(win){ fx(q,{athletic:3,happy:4}); setFlag(q,'standsUp'); if(chance(40))q.record.push('School fight'); return `${q.first} won the fight. Suspended three days, but a legend in the halls.`;} fx(q,{health:-12,happy:-6}); q.record.push('School fight'); return `${q.first} got beat up and suspended. A rough week.`;}},
+            {label:'Just defend yourself', sub:'safer', effect:q=>{ fx(q,{happy:2}); if(chance(50))return `${q.first} held them off until a teacher broke it up.`; fx(q,{health:-6}); return `${q.first} took a couple hits before it ended.`;}},
+          ]})},
+      {label:'Walk away', sub:'+smarts, -respect', effect:p=>{ fx(p,{smarts:2,happy:-4}); return `${p.first} walked away. Smart, but the trash talk continued.`;}},
+      {label:'Report them', sub:'safe', effect:p=>{ fx(p,{happy:1}); return `${p.first} told the office. The kid got detention.`;}},
+    ]},
+  { id:'prank', emoji:'🃏', title:'A chance for mischief', 
+    when:p=>p.age>=9&&p.age<=17, weight:2,
+    body:p=>`${p.first} and some friends are daring each other to pull a prank — toilet-paper the principal's yard.`,
+    choices:[
+      {label:'Pull the prank', sub:'fun, risky', effect:p=>{ if(chance(30)){ fx(p,{happy:3}); p.record.push('Caught vandalizing'); setFlag(p,'earlyTrouble'); return `${p.first} got caught and the parents got The Call. Grounded.`;} fx(p,{happy:9}); setFlag(p,'prankster'); return `A flawless prank. ${p.first} is a playground legend.`;}},
+      {label:'Be the lookout only', sub:'+joy, less risk', effect:p=>{ fx(p,{happy:5}); return `${p.first} kept watch and shared in the glory, none of the blame.`;}},
+      {label:'Talk them out of it', sub:'+smarts', effect:p=>{ fx(p,{smarts:3,happy:2}); setFlag(p,'goodHeart'); return `${p.first} convinced everyone to go get ice cream instead.`;}},
+    ]},
+  // ---------- SIBLINGS ----------
+  { id:'sibling_clash', emoji:'👧', title:'Sibling trouble', 
+    when:p=>p.age>=5&&p.age<=17 && p.rels.some(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive), weight:2,
+    body:p=>{const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); return `${p.first}'s ${s.kind.toLowerCase()} ${s.name.split(' ')[0]} broke their favorite thing and blamed them for it.`;},
+    choices:[
+      {label:'Scream and fight them', sub:'-bond', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond-15); fx(p,{happy:-4}); return `A screaming match. ${s?s.name.split(' ')[0]:'They'} and ${p.first} aren't speaking.`;}},
+      {label:'Take the high road', sub:'+bond, +joy', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond+12); fx(p,{happy:4}); return `${p.first} let it go. Their ${s?s.kind.toLowerCase():'sibling'} felt guilty and they grew closer.`;}},
+      {label:'Plot sweet revenge', sub:'sneaky', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond-5); fx(p,{happy:3}); setFlag(p,'prankster'); return `${p.first} got even in a way only siblings understand.`;}},
+    ]},
+  { id:'sibling_defend', emoji:'🛡', title:'Your sibling needs you', 
+    when:p=>p.age>=7&&p.age<=17 && p.rels.some(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive), weight:2,
+    body:p=>{const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); return `Some kids are picking on ${p.first}'s ${s.kind.toLowerCase()} ${s.name.split(' ')[0]} at the park.`;},
+    choices:[
+      {label:'Step in and fight for them', sub:'risky, +bond', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); const win=p.stats.athletic>50||chance(50); if(s)s.bond=clamp(s.bond+(win?20:10)); if(win){ fx(p,{athletic:3,happy:6}); setFlag(p,'standsUp'); return `${p.first} ran the bullies off. Their ${s?s.kind.toLowerCase():'sibling'} will never forget it.`;} fx(p,{health:-8}); return `${p.first} got roughed up — but their ${s?s.kind.toLowerCase():'sibling'} saw them try, and loved them for it.`;}},
+      {label:'Go get a grown-up', sub:'safe, small +bond', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond+6); fx(p,{happy:2}); return `${p.first} fetched help. The bullies scattered.`;}},
+      {label:'Pretend you didn\'t see', sub:'-bond', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond-12); fx(p,{happy:-5}); return `${p.first} looked away. Their ${s?s.kind.toLowerCase():'sibling'} noticed.`;}},
+    ]},
+  // ---------- OUT IN THE WORLD: good & bad deeds ----------
+  { id:'shoplift', emoji:'🏪', title:'Five-finger discount', 
+    when:p=>p.age>=10&&p.age<=17, weight:2,
+    body:p=>`${p.first} is at the store with friends. Someone dares them to pocket a candy bar.`,
+    choices:[
+      {label:'Steal it', sub:'risky', effect:p=>{ if(chance(35)){ fx(p,{happy:-6}); p.record.push('Caught shoplifting'); setFlag(p,'earlyTrouble'); return `Security caught ${p.first}. Parents called, banned from the store.`;} fx(p,{happy:3}); setFlag(p,'sticky_fingers'); return `${p.first} walked out with it, heart pounding. Got away clean.`;}},
+      {label:'Pay for it', sub:'+smarts', effect:p=>{ fx(p,{money:-3,happy:2}); return `${p.first} just bought the candy. Easy.`;}},
+      {label:'Talk the others out of it', sub:'+goodheart', effect:p=>{ fx(p,{smarts:2,happy:2}); setFlag(p,'goodHeart'); return `${p.first} kept everyone out of trouble.`;}},
+    ]},
+  { id:'homeless_help', emoji:'🤲', title:'Someone in need', 
+    when:p=>p.age>=8&&p.age<=17, weight:2,
+    body:p=>`${p.first} passes a person sleeping rough, cold and hungry, asking for help.`,
+    choices:[
+      {label:'Give what you have', sub:'+kindness', effect:p=>{ fx(p,{money:-5,happy:8}); setFlag(p,'goodHeart'); return `${p.first} handed over their snack money and a kind word. It mattered.`;}},
+      {label:'Buy them a warm meal', sub:'+joy, costs more', effect:p=>{ fx(p,{money:-12,happy:12}); setFlag(p,'goodHeart'); return `${p.first} bought them a hot meal and sat with them a while. A memory that shapes a person.`;}},
+      {label:'Keep walking', sub:'nothing', effect:p=>{ fx(p,{happy:-2}); return `${p.first} kept walking, but it stuck with them.`;}},
+    ]},
+  // ---------- ADOLESCENCE: gangs, dances, identity ----------
+  { id:'gang_recruit', emoji:'🧥', title:'The wrong crowd', 
+    when:p=>p.age>=13&&p.age<=18, weight:1.6,
+    body:p=>`A tough older crew has been eyeing ${p.first}. They say they've got their back — if ${p.first} is loyal.`,
+    choices:[
+      {label:'Join them', sub:'dangerous path', effect:p=>{ setFlag(p,'inGang'); fx(p,{happy:4,athletic:3}); seed(p,2,'gang_trouble'); return `${p.first} fell in with the crew. Protection, respect… and trouble coming.`;}},
+      {label:'Keep them at arm\'s length', sub:'risky balance', effect:p=>{ fx(p,{happy:1}); if(chance(40))return `${p.first} stayed friendly but free. A careful line to walk.`; fx(p,{happy:-3}); return `They didn't like being told no. ${p.first} watches their back now.`;}},
+      {label:'Walk away for good', sub:'+smarts', effect:p=>{ fx(p,{smarts:3,happy:2}); setFlag(p,'goodHeart'); return `${p.first} chose a different path. The smart, lonely choice.`;}},
+    ]},
+  { id:'school_dance', emoji:'💃', title:'The school dance', once:true,
+    when:p=>p.age>=14&&p.age<=18&&p.inSchool, weight:3,
+    body:p=>`Homecoming is coming up. ${p.first} could ask someone, go with friends, or skip it.`,
+    choices:[
+      {label:'Ask out a crush', sub:'brave', effect:p=>{ if(chance(55+p.stats.looks*0.2)){ const sx=partnerSex(p); p.rels.push({name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:50+rnd(20),alive:true,id:nid()}); fx(p,{happy:14}); return `They said yes! ${p.first} had a magical night.`;} fx(p,{happy:-6}); return `Turned down. ${p.first} went with friends instead and had fun anyway.`;}},
+      {label:'Run for Homecoming royalty', sub:'+fame', effect:p=>{ if(chance(30+p.stats.looks*0.3+p.stats.fame*0.4)){ fx(p,{fame:14,happy:12}); setFlag(p,'homecomingRoyalty'); return `${p.first} was crowned Homecoming ${p.sex==='f'?'Queen':p.sex==='m'?'King':'Royalty'}! The whole school cheered.`;} fx(p,{happy:-3}); return `${p.first} ran but didn't win. Still a fun night.`;}},
+      {label:'Go with your friends', sub:'+joy', effect:p=>{ fx(p,{happy:9}); return `${p.first} danced all night with the crew. No drama, all fun.`;}},
+      {label:'Skip it', sub:'+smarts', effect:p=>{ fx(p,{smarts:2,happy:-2}); return `${p.first} stayed home. Dances aren't for everyone.`;}},
+    ]},
+  { id:'become_bully', emoji:'😈', title:'A chance for power', 
+    when:p=>p.age>=11&&p.age<=16&&!hasFlag(p,'goodHeart'), weight:1.4,
+    body:p=>`${p.first} realizes they could be the one making other kids afraid. It would feel powerful.`,
+    choices:[
+      {label:'Become the bully', sub:'dark path', effect:p=>{ setFlag(p,'isBully'); fx(p,{happy:3}); return `${p.first} started throwing their weight around. Feared, not liked.`;}},
+      {label:'Use it to protect others', sub:'+respect', effect:p=>{ setFlag(p,'protector'); fx(p,{happy:6}); return `${p.first} became the kid who stands up for the little ones. A reputation worth having.`;}},
+      {label:'Just be kind', sub:'+joy', effect:p=>{ fx(p,{happy:5}); setFlag(p,'goodHeart'); return `${p.first} chose kindness. Quietly, it made everything better.`;}},
+    ]},
+  // ---------- JV sports / talent ----------
+  { id:'jv_tryout', emoji:'🏅', title:'JV tryouts', 
+    when:p=>p.age>=13&&p.age<=16&&p.inSchool, weight:2,
+    body:p=>`Tryouts for the junior varsity team are this week. ${p.first} could put in the work.`,
+    choices:[
+      {label:'Train hard and try out', sub:'+athletic', effect:p=>{ if(p.stats.athletic>45||chance(55)){ fx(p,{athletic:8,happy:8}); setFlag(p,'jvAthlete'); return `${p.first} made the JV team and thrived.`;} fx(p,{athletic:3,happy:-4}); return `${p.first} got cut, but came back stronger next year.`;}},
+      {label:'Try out for the mathletes instead', sub:'+smarts', effect:p=>{ fx(p,{smarts:8,happy:5}); setFlag(p,'mathlete'); return `${p.first} joined the academic team and crushed it.`;}},
+      {label:'Not interested', sub:'nothing', effect:p=>{ return `${p.first} sat this one out.`;}},
+    ]},
+  // ---------- young entrepreneur (smart kids) ----------
+  { id:'kid_startup', emoji:'💡', title:'A big idea', once:true,
+    when:p=>p.age>=12&&p.age<=17&&p.stats.smarts>=70, weight:2,
+    body:p=>`${p.first} has an idea — an app, a little business — and the brains to maybe pull it off.`,
+    choices:[
+      {label:'Build it nights and weekends', sub:'+smarts, maybe $$$', effect:p=>{ fx(p,{smarts:6,stress:8}); if(chance(35)){ const win=2000+rnd(40000); fx(p,{money:win,fame:6}); setFlag(p,'teenFounder'); return `${p.first}'s project actually took off — ${money(win)} and a taste of success.`;} setFlag(p,'teenFounder'); return `It didn't make money, but ${p.first} learned to build something real.`;}},
+      {label:'Enter the science fair instead', sub:'+smarts', effect:p=>{ fx(p,{smarts:8,happy:4}); if(chance(45)){fx(p,{fame:5});return `${p.first} won the regional science fair. Colleges will notice.`;} return `${p.first} poured everything into a great project.`;}},
+      {label:'Just be a kid', sub:'+joy', effect:p=>{ fx(p,{happy:6}); return `${p.first} let the idea go and enjoyed being young.`;}},
+    ]},
+  // ---------- parents: private vs public school ----------
+  { id:'school_choice', emoji:'🎒', title:'Where to go to school', once:true,
+    when:p=>p.age>=10&&p.age<=12, weight:2.5,
+    body:p=>`${p.first}'s parents are weighing private school. It's a stretch financially, but the opportunities are real.`,
+    choices:[
+      {label:'Private school', sub:'+smarts, costs family', need:p=>true, effect:p=>{ fx(p,{smarts:8}); setFlag(p,'privateSchool'); if(p._familyMoney) p._familyMoney=Math.max(0,p._familyMoney-30000); return `${p.first} went to private school. Smaller classes, bigger expectations.`;}},
+      {label:'Public school', sub:'+grit, +friends', effect:p=>{ fx(p,{happy:4,athletic:2}); setFlag(p,'publicSchool'); return `${p.first} went to the local public school. Real-world, and full of life.`;}},
+      {label:'Homeschool', sub:'+smarts, -social', effect:p=>{ fx(p,{smarts:6,happy:-3}); setFlag(p,'homeschool'); return `${p.first}'s parents taught them at home. Bright, but a little sheltered.`;}},
     ]},
   // ---------- TEEN ----------
   { id:'first_party', emoji:'🎈', title:'The first real party', once:true,
@@ -1599,8 +1726,8 @@ function eventEligible(p, ev){
 }
 function rollInteractiveEvent(p){
   if(!p.alive || p.inPrison) return null;
-  // ~32% of years offer a decision, scaled down a touch in childhood
-  const base = p.age<6? 0 : 30;
+  // ~30% base, with early childhood (under 2) excluded
+  const base = p.age<2? 0 : 30;
   if(!chance(base)) return null;
   const pool = CHOICE_EVENTS.filter(ev=>eventEligible(p,ev));
   if(!pool.length) return null;
@@ -1765,6 +1892,15 @@ function resolvePending(p){
       case 'retaliation':
         if(chance(50)){ p.stats.health=clamp(p.stats.health-15); log(`${p.first} faced retaliation for testifying. A frightening year.`,'bad'); }
         break;
+      case 'gang_trouble':
+        if(hasFlag(p,'inGang')){
+          const r=rnd(100);
+          if(r<25){ p.stats.health=clamp(p.stats.health-18); p.record.push('Gang violence'); log(`${p.first} got caught in gang violence and was badly hurt.`,'bad'); }
+          else if(r<45){ p.inPrison=true; p.prisonYears=1+rnd(3); p.record.push('Juvenile detention'); log(`${p.first} was arrested for gang activity — time in juvenile detention.`,'bad'); }
+          else if(r<60){ const take=2000+rnd(20000); p.money+=take; log(`${p.first} made some fast, dangerous money with the crew — ${money(take)}.`,'bad'); seed(p,2,'gang_trouble'); }
+          else { log(`${p.first} drifted away from the gang before things got worse.`,'muted'); clearFlag(p,'inGang'); }
+        }
+        break;
     }
   });
 }
@@ -1782,11 +1918,44 @@ function quarterEvent(p){
     ()=>{const f=10+rnd(120);p.money=Math.max(0,p.money-f);log(`A small unexpected expense — ${money(f)}.`,'muted');},
     ()=>log(`A slow ${season} passed without much fuss.`,'muted'),
   ];
-  if(p.age<13) pool.push(()=>{p.stats.happy=clamp(p.stats.happy+4);log(`${p.first} had fun playing with friends.`,'good');});
-  if(p.age>=13&&p.age<=19) pool.push(()=>{p.stats.happy=clamp(p.stats.happy+3);log(`${p.first} spent the season chasing a new obsession.`,'good');});
+  // EARLY CHILDHOOD (0–6)
+  if(p.age<=6){
+    pool.push(
+      ()=>{p.stats.happy=clamp(p.stats.happy+4);log(`${p.first} learned a new word and wouldn't stop saying it.`,'good');},
+      ()=>{p.stats.happy=clamp(p.stats.happy+3);log(`${p.first} had a great day at daycare.`,'good');},
+      ()=>{p.stats.happy=clamp(p.stats.happy-3);log(`${p.first} threw an epic tantrum in a grocery store.`,'muted');},
+      ()=>{p.stats.health=clamp(p.stats.health-3);log(`${p.first} caught a ${season} cold.`,'muted');},
+      ()=>{p.stats.happy=clamp(p.stats.happy+5);log(`${p.first} spent the whole ${season} obsessed with dinosaurs.`,'good');},
+      ()=>{p.stats.athletic=clamp(p.stats.athletic+2);log(`${p.first} learned to climb everything in sight.`,'good');}
+    );
+  }
+  // CHILDHOOD (7–12)
+  if(p.age>=7&&p.age<=12){
+    pool.push(
+      ()=>{p.stats.smarts=clamp(p.stats.smarts+3);log(`${p.first} got really into a new hobby this ${season}.`,'good');},
+      ()=>{p.stats.happy=clamp(p.stats.happy+4);log(`${p.first} had a sleepover that ended in a pillow-fort empire.`,'good');},
+      ()=>{p.stats.athletic=clamp(p.stats.athletic+3);log(`${p.first} spent the ${season} biking around the neighborhood.`,'good');},
+      ()=>{p.stats.happy=clamp(p.stats.happy-4);log(`${p.first} got picked last in gym again.`,'muted');},
+      ()=>{p.stats.smarts=clamp(p.stats.smarts+4);log(`${p.first} read an entire book series this ${season}.`,'good');},
+      ()=>{const a=5+rnd(40);p.money+=a;log(`${p.first} earned ${money(a)} doing chores.`,'good');}
+    );
+  }
+  // TEENS (13–18)
+  if(p.age>=13&&p.age<=18){
+    pool.push(
+      ()=>{p.stats.happy=clamp(p.stats.happy+4);log(`${p.first} spent the ${season} glued to their phone and their friends.`,'good');},
+      ()=>{p.stats.looks=clamp(p.stats.looks+3);log(`${p.first} figured out their personal style this ${season}.`,'good');},
+      ()=>{p.stats.smarts=clamp(p.stats.smarts-2);p.stats.happy=clamp(p.stats.happy+4);log(`${p.first} procrastinated a whole ${season} away. Worth it?`,'muted');},
+      ()=>{p.stress=clamp(p.stress+6);log(`Exams had ${p.first} stressed this ${season}.`,'muted');},
+      ()=>{const a=200+rnd(1500);p.money+=a;log(`${p.first} worked a ${season} job and saved ${money(a)}.`,'good');},
+      ()=>{p.stats.happy=clamp(p.stats.happy+5);log(`${p.first} stayed out too late with friends and felt alive.`,'good');},
+      ()=>{p.stats.happy=clamp(p.stats.happy-5);log(`Some friend-group drama soured ${p.first}'s ${season}.`,'muted');}
+    );
+  }
   if(p.job!=='none') pool.push(()=>{p.stress=clamp(p.stress+4);log(`A busy season at work for ${p.first}.`,'muted');});
   if(p.rels.find(r=>r.kind==='Spouse'&&r.alive)) pool.push(()=>{p.stats.happy=clamp(p.stats.happy+4);log(`${p.first} and their spouse shared a lovely ${season}.`,'good');});
   if(p.pets&&p.pets.some(pt=>pt.alive)) pool.push(()=>{p.stats.happy=clamp(p.stats.happy+3);log(`${p.first}'s pet did something adorable.`,'good');});
+  if(p.rels.some(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive)) pool.push(()=>{const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive);s.bond=clamp(s.bond+rndDrift(3));p.stats.happy=clamp(p.stats.happy+2);log(`${p.first} and ${s.name.split(' ')[0]} spent a lot of the ${season} together.`,'good');});
   pick(pool)();
 }
 function lifeEvents(p){
@@ -2122,11 +2291,13 @@ function openRelations(){
     const col=r.bond>66?'--sage':r.bond>33?'--gold':'--blood';
     const emoji=relEmoji(r);
     const isRomantic = (r.kind==='Spouse'||r.kind==='Partner') && r.alive;
+    const isPeer = /Brother|Sister|Sibling|Friend/.test(r.kind) && r.alive;
     html+=`<div class="rel ${r.alive?'':'dead'}">
       <div class="av">${emoji}</div>
       <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind}${r.note?' · '+r.note:''}${r.alive?'':' · passed'}</div>
       ${r.alive?`<div class="rbar"><i style="width:${r.bond}%;background:var(--${col.slice(2)})"></i></div>`:''}</div>
       ${r.alive?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="time">Spend<br>time</button>`:''}
+      ${isPeer?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="interact">More…</button>`:''}
       ${isRomantic?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="leave">${r.kind==='Spouse'?'Divorce':'Break<br>up'}</button>`:''}
     </div>`;
   });
@@ -2167,6 +2338,9 @@ function openRelations(){
     sh.querySelectorAll('[data-act="leave"]').forEach(b=>b.onclick=()=>{
       const r=rels[+b.dataset.i]; doBreakup(p, r);
     });
+    sh.querySelectorAll('[data-act="interact"]').forEach(b=>b.onclick=()=>{
+      const r=rels[+b.dataset.i]; openPeerActions(p, r);
+    });
     const marry=sh.querySelector('[data-do="marry"]'); if(marry)marry.onclick=()=>doMarry(p);
     const date=sh.querySelector('[data-do="date"]'); if(date)date.onclick=()=>doDate(p);
     const baby=sh.querySelector('[data-do="baby"]'); if(baby)baby.onclick=()=>doBaby(p,false);
@@ -2175,6 +2349,29 @@ function openRelations(){
     const fling=sh.querySelector('[data-do="fling"]'); if(fling)fling.onclick=()=>doFling(p);
     const hist=sh.querySelector('[data-do="history"]'); if(hist)hist.onclick=()=>openPartnerHistory(p);
   });
+}
+
+function openPeerActions(p, r){
+  closeSheet();
+  const isSib=/Brother|Sister|Sibling/.test(r.kind);
+  const name=r.name.split(' ')[0];
+  const opts=[];
+  opts.push(O('🤝','Team up','+bond, +joy',0,()=>{ r.bond=clamp(r.bond+10); p.stats.happy=clamp(p.stats.happy+4); closeSheet(); log(`${p.first} and ${name} took on the world together for a while. Closer than ever.`,'good'); render(); }));
+  if(p.age<=18){
+    opts.push(O('🃏','Play a prank','risky fun',0,()=>{ if(chance(60)){ r.bond=clamp(r.bond+4); p.stats.happy=clamp(p.stats.happy+5); closeSheet(); log(`${p.first} pulled a harmless prank on ${name}. They both laughed.`,'good'); } else { r.bond=clamp(r.bond-8); closeSheet(); log(`The prank on ${name} went too far. They're mad at ${p.first}.`,'bad'); } render(); }));
+    opts.push(O('🛡','Stick up for them','+bond',0,()=>{ r.bond=clamp(r.bond+12); p.stats.happy=clamp(p.stats.happy+3); if(chance(40))setFlag(p,'standsUp'); closeSheet(); log(`${p.first} stood up for ${name} when it counted.`,'good'); render(); }));
+  }
+  if(isSib){
+    opts.push(O('😈','Torment them','−bond, sneaky joy',0,()=>{ r.bond=clamp(r.bond-12); p.stats.happy=clamp(p.stats.happy+2); setFlag(p,'prankster'); closeSheet(); log(`${p.first} made ${name}'s life a little miserable, sibling-style.`,'muted'); render(); }));
+    opts.push(O('💰','Ask for a favor','depends on bond',0,()=>{ if(r.bond>55){ const amt=50+rnd(400); p.money+=amt; r.bond=clamp(r.bond-4); closeSheet(); log(`${name} spotted ${p.first} ${money(amt)}. That's what siblings are for.`,'good'); } else { r.bond=clamp(r.bond-6); closeSheet(); log(`${name} said no. Things are a little frosty.`,'muted'); } render(); }));
+  } else {
+    opts.push(O('🎮','Hang out','+bond',0,()=>{ r.bond=clamp(r.bond+8); p.stats.happy=clamp(p.stats.happy+5); closeSheet(); log(`${p.first} and ${name} spent the day hanging out. Good times.`,'good'); render(); }));
+    opts.push(O('💢','Pick a fight','−bond',0,()=>{ r.bond=clamp(r.bond-14); p.stats.happy=clamp(p.stats.happy-3); closeSheet(); log(`${p.first} fell out with ${name}. The friendship cooled.`,'muted'); render(); }));
+  }
+  if(r.bond>=88) opts.push(OH(`You and ${name} are inseparable.`));
+  else if(r.bond<=12) opts.push(OH(`You and ${name} can barely stand each other.`));
+  let html=`<div class="grab"></div><h3>${name}</h3><p class="hint">${r.kind} · bond ${Math.round(r.bond)}/100</p>`;
+  sheet(html+opts.join(''), sh=>{ bindOpts(sh); });
 }
 
 function doBreakup(p, r){
