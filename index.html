@@ -537,6 +537,40 @@ function powerEdge(p){
   p.powers.forEach(pow=>{ const m=POWER_CAREER[pow]; if(m && m.careers.includes(p.job)) edge+=1; });
   return edge;
 }
+// How many followers a person starts with when they join social media, based on their
+// existing fame and the public profile of their career. A famous athlete arrives with a
+// built-in audience; a teacher starts near zero.
+const CAREER_SOCIAL_BASE = {
+  // huge public profile
+  nba:400000, nfl:400000, soccer:350000, moviestar:500000, popstar:600000, musician:250000,
+  actor:200000, model:300000, wwe:300000, ufc:250000, boxer:200000, esports:150000,
+  // notable public profile
+  politician:120000, director:90000, author:60000, writer:60000, restaurateur:50000,
+  astronaut:80000, superhero:300000, villain:200000, agent:0,
+  // modest professional profile
+  lawyer:15000, judge:20000, doctor:18000, professor:20000, scientist:25000, ceo:60000,
+  corporate:8000, founder:40000, aistartup:50000, tech:12000, realtor:18000, chef:25000,
+  // everyday — little to no built-in audience
+  teacher:3000, nurse:2000, engineer:4000, accountant:1500, analyst:2500, pilot:6000,
+  vet:5000, mechanic:1500, electrician:1000, plumber:1000, farmer:3000, trucker:800,
+  driver:800, barista:500, cashier:300, janitor:300,
+};
+function startingFollowers(p){
+  // base from career profile
+  let base = CAREER_SOCIAL_BASE[p.job] != null ? CAREER_SOCIAL_BASE[p.job] : 1000;
+  // fame multiplies the reach hugely — a famous person in any field draws a crowd
+  const fameMult = 1 + (p.stats.fame||0)/15;       // up to ~7.6x at 100 fame
+  // championship/legend status and looks add a bonus
+  let bonus = 0;
+  if(p.champion) bonus += 100000;
+  if(hasFlag(p,'sportsLegend')||hasFlag(p,'leagueFace')) bonus += 150000;
+  if(p.stats.looks>75) bonus += Math.round(base*0.5);
+  if(p.traits && p.traits.includes('charming')) bonus += Math.round(base*0.3);
+  let total = Math.round(base*fameMult + bonus);
+  // a little randomness so it isn't identical every time
+  total = Math.round(total * (0.8 + Math.random()*0.4)) + rnd(500);
+  return Math.max(50, total);
+}
 // generate a comic-book alias for villains and nemeses
 const VILLAIN_PREFIX=['Doctor','Lord','The','Baron','Mister','Madame','Professor','Captain','King','Lady'];
 const VILLAIN_CORE=['Venom','Shadow','Chaos','Inferno','Mortis','Riddle','Void','Vex','Carnage','Cipher','Dread','Sable','Hex','Onyx','Specter','Malice','Grim','Toxin','Pyre','Wraith','Vortex','Blight'];
@@ -599,6 +633,7 @@ function blankPerson(opt={}){
     },
     edu: 0, major:null,
     job: 'none', jobYears:0, salary:0, jobTitle:null, partTime:null, stress:0,
+    retired:false, pension:0, peakSalary:0, careerYears:0, claimedSS:false,
     money: opt.money ?? 0,
     insured:false, insurePremium:0,
     married:false, partnerName:null, partnerId:null,
@@ -727,6 +762,11 @@ function migrate(){
     if(p.insured==null) p.insured=false;
     if(p.inPrison==null) p.inPrison=false;
     if(p.prisonRep==null) p.prisonRep=0;
+    if(p.retired==null) p.retired=false;
+    if(p.pension==null) p.pension=0;
+    if(p.peakSalary==null) p.peakSalary=p.salary||0;
+    if(p.careerYears==null) p.careerYears=p.jobYears||0;
+    if(p.claimedSS==null) p.claimedSS=false;
     if(p.prisonRole===undefined) p.prisonRole=null;
     if(p.prisonYears==null) p.prisonYears=0;
     if(!p.bday) p.bday={m:rnd(12),day:1+rnd(28)};
@@ -895,7 +935,7 @@ function render(){
   $('#h-name').textContent = p.first+' '+p.last;
   $('#h-gen').textContent = 'Gen '+p.gen;
   const c=CAREER(p.job);
-  let role = p.inSchool? p.schoolLevel : (p.job!=='none'? c.l : (p.age<6?'A small child':p.age<18?'A student of life':'Between things'));
+  let role = p.inSchool? p.schoolLevel : (p.job!=='none'? c.l : (p.retired?'Retired':(p.age<6?'A small child':p.age<18?'A student of life':'Between things')));
   $('#h-sub').textContent = `${p.age} yrs · ${sexWord(p.sex)} · ${role}`;
   const st=$('#h-stats'); st.innerHTML='';
   STATMETA.forEach(m=>{
@@ -1113,6 +1153,20 @@ function runYear(){
   // income
   if(p.job!=='none' && p.alive){
     runJob(p);
+    // track career stats for a future pension
+    if(p.salary>p.peakSalary) p.peakSalary=p.salary;
+    p.careerYears=(p.careerYears||0)+1;
+  }
+  // RETIREMENT INCOME: pension + Social Security once retired and of age
+  if(p.retired && p.alive){
+    let income=0;
+    if(p.pension>0) income+=p.pension;
+    // Social Security kicks in at 65 (or earlier if claimed); scales with career length
+    if(p.age>=65 || p.claimedSS){
+      const ss=Math.round(Math.min(45000, 12000 + (p.careerYears||0)*700) * (p.claimedSS&&p.age<65?0.7:1));
+      income+=ss;
+    }
+    if(income>0){ p.money+=income; }
   }
   // part-time income
   if(p.partTime){ p.money += p.partTime.pay; p.stress=clamp(p.stress+3); if(p.age<18) p.stats.smarts=clamp(p.stats.smarts-0.5); }
@@ -1222,7 +1276,43 @@ function systemsTick(p){
       p.prisonYears--;
       // chance of early parole for good behavior
       if(p.prisonYears>1 && p._yearsServed>=2 && chance(12)){ p.prisonYears=0; log(`${p.first} was granted early parole for good behavior.`,'good'); }
-      if(p.prisonYears<=0){ p.inPrison=false; p._yearsServed=0; p._wasCrime=false; p._villainJailed=false; p.securityLevel=0; p.escapeAttempts=0; p.prisonRep=0; p.prisonRole=null; clearFlag(p,'prisonNetwork'); clearFlag(p,'prisonGang'); clearFlag(p,'snitch'); clearFlag(p,'ownsGuard'); log(`${p.first} was released from prison. A second chance.`,'big'); }
+      if(p.prisonYears<=0){
+        // ===== RELEASE: prison shapes who walks out =====
+        const wasBoss = p.prisonRole==='shotcaller';
+        const repEarned = p.prisonRep||0;
+        const criminalPath = p._wasCrime || p.job==='crimelord' || p.job==='villain' || hasFlag(p,'madeBones') || wasBoss;
+        let outMsg = `${p.first} was released from prison. A second chance.`;
+        if(criminalPath){
+          // a criminal comes out harder and more connected — "better, by which I mean worse"
+          const hardness = Math.round(repEarned/12) + (wasBoss?6:0) + (hasFlag(p,'madeBones')?4:0);
+          p.stats.athletic=clamp(p.stats.athletic + Math.min(12, hardness));
+          p.stats.smarts=clamp(p.stats.smarts + (hasFlag(p,'kingpinProtege')?6:2));
+          // terrifying reputation translates to underworld standing
+          if(p.job==='crimelord'||p.job==='villain'){
+            p.minionPower=clamp((p.minionPower||0) + Math.min(20, hardness+ (hasFlag(p,'recruitedInside')?6:0)));
+            if(hasFlag(p,'crewInside')) p.minions=(p.minions||0)+1;
+            if(p.job==='crimelord') p.territory=clamp((p.territory||0) + (wasBoss?12:5));
+            p.heat=Math.max(0,(p.heat||0)-15); // did the time, cooled some heat
+          }
+          // hardened traits earned inside
+          if(hasFlag(p,'coldBlooded')||hasFlag(p,'madeBones')){ addTrait(p,'tough'); if(chance(60))addTrait(p,'sly',true); }
+          if(repEarned>=60 && chance(60)) addTrait(p,'brave');
+          // a prison-forged reputation precedes them on the street
+          if(repEarned>=50 || wasBoss){ p.stats.fame=clamp(p.stats.fame+8); setFlag(p,'exConHardened'); }
+          outMsg = wasBoss
+            ? `${p.first} walked out of prison a legend of the underworld — harder, sharper, and more feared than the day they went in.`
+            : `${p.first} did their time and came out tougher and more connected. Prison was an education.`;
+          // released boss may have a fresh enforcer waiting
+          if(hasFlag(p,'recruitedInside')&&!p.henchman&&chance(50)){ p.henchman={name:villainName(),loyalty:75}; }
+        } else {
+          // non-criminals: rehabilitation or hardening depending on what they did inside
+          if(hasFlag(p,'modelInmate')){ p.stats.happy=clamp(p.stats.happy+6); outMsg=`${p.first} was released, having turned the time into a fresh start.`; }
+          else if(repEarned>40){ addTrait(p,'tough'); outMsg=`${p.first} walked out of prison a harder person than they went in.`; }
+        }
+        p.inPrison=false; p._yearsServed=0; p._wasCrime=false; p._villainJailed=false; p.securityLevel=0; p.escapeAttempts=0; p.prisonRep=0; p.prisonRole=null;
+        clearFlag(p,'prisonNetwork'); clearFlag(p,'prisonGang'); clearFlag(p,'snitch'); clearFlag(p,'ownsGuard'); clearFlag(p,'crewInside'); clearFlag(p,'owesGang'); clearFlag(p,'holdsGrudge');
+        log(outMsg,'big');
+      }
     }
   }
 
@@ -1530,6 +1620,20 @@ function runJob(p){
   if(p.money<0 && chance(30)) log(`Money is tight. ${p.first} is in the red.`,'bad');
 }
 function endJob(p,reason){ p.job='none'; p.salary=0; p.jobYears=0; p.jobTitle=null; p._rung=0; p._stage=null; p._stageYears=0; if(reason)log(reason,'muted'); }
+// Retire from a career: compute a pension from peak salary and years worked, set retired status.
+function doRetire(p, quiet){
+  const yrs=p.careerYears||p.jobYears||0;
+  const peak=Math.max(p.peakSalary||0, p.salary||0);
+  // pension: a fraction of peak pay, scaling with years served (longer career → better pension)
+  const factor=Math.min(0.6, 0.012*yrs);     // up to 60% of peak after ~50 years
+  p.pension=Math.round(peak*factor);
+  p.retired=true;
+  endJob(p);
+  if(!quiet){
+    if(p.pension>0) log(`${p.first} retired with a ${money(p.pension)}/yr pension after ${yrs} years of work.`,'big');
+    else log(`${p.first} retired. Time is the new luxury.`,'big');
+  }
+}
 
 /* ---------------- schooling ---------------- */
 function schoolTick(p){
@@ -2084,11 +2188,36 @@ const CHOICE_EVENTS = [
     ]},
   // ---------- ELDER ----------
   { id:'retire', emoji:'🌅', title:'Time to retire?', once:true,
-    when:p=>p.age>=62&&p.job!=='none', weight:3,
-    body:p=>`${p.first} could retire now and enjoy life, or keep working for the money and purpose.`,
+    when:p=>p.age>=62&&p.job!=='none'&&!p.retired, weight:3,
+    body:p=>{ const yrs=p.careerYears||p.jobYears||0; const peak=Math.max(p.peakSalary||0,p.salary||0); const est=Math.round(peak*Math.min(0.6,0.012*yrs)); return `After ${yrs} years of work, ${p.first} could retire now. Estimated pension: about ${money(est)}/yr, plus Social Security at 65.`;},
     choices:[
-      {label:'Retire', sub:'+joy, -income', effect:p=>{ fx(p,{happy:12,stress:-20}); endJob(p,`${p.first} retired after a long career.`); return `${p.first} hung it up. Time is the new luxury.`;}},
-      {label:'Keep working', sub:'+income', effect:p=>{fx(p,{stress:6}); return `${p.first} isn't done yet.`;}},
+      {label:'Retire comfortably', sub:'+joy, pension', effect:p=>{ fx(p,{happy:14,stress:-25,health:3}); doRetire(p,true); return `${p.first} hung it up with a ${money(p.pension)}/yr pension. Time is the new luxury.`;}},
+      {label:'Work a few more years', sub:'+pension later', effect:p=>{ fx(p,{stress:6}); return `${p.first} isn't done yet — and every year boosts the eventual pension.`;}},
+      {label:'Retire and travel the world', sub:'-$, +big joy', effect:p=>{ const cost=Math.min(p.money,Math.round(p.money*0.1)+15000); fx(p,{money:-cost,happy:20,health:5}); doRetire(p,true); setFlag(p,'worldTraveler'); return `${p.first} retired and set off to see the world they'd been too busy for.`;}},
+    ]},
+  { id:'claim_ss_early', emoji:'📋', title:'Claim benefits early?', once:true,
+    when:p=>p.age>=62&&p.age<65&&p.retired&&!p.claimedSS, weight:2,
+    body:p=>`${p.first} could start claiming Social Security now at a reduced rate, or wait until 65 for the full amount.`,
+    choices:[
+      {label:'Claim now (reduced)', sub:'+income sooner', effect:p=>{ p.claimedSS=true; fx(p,{happy:4}); return `${p.first} took the early, smaller checks. Money now beats money later, they figured.`;}},
+      {label:'Wait for the full benefit', sub:'+more later', effect:p=>{ fx(p,{happy:2}); return `${p.first} decided to hold out for the bigger monthly check at 65.`;}},
+    ]},
+  { id:'retirement_restless', emoji:'🪑', title:'The restlessness of retirement', once:true,
+    when:p=>p.retired&&p.age>=63&&p.age<=75, weight:2.2,
+    body:p=>`A few months in, the quiet is getting to ${p.first}. They miss having somewhere to be.`,
+    choices:[
+      {label:'Take an encore part-time job', sub:'+income, +purpose', effect:p=>{ const pay=8000+rnd(25000); p.partTime={name:'Encore work',pay}; fx(p,{happy:8,health:2}); return `${p.first} picked up easygoing part-time work — ${money(pay)}/yr and a reason to get up.`;}},
+      {label:'Do paid consulting in your old field', sub:'+$$', need:p=>(p.peakSalary||0)>50000, effect:p=>{ const fee=Math.round((p.peakSalary||50000)*(0.3+Math.random()*0.5)); p.money+=fee; fx(p,{happy:6}); setFlag(p,'consultant'); return `${p.first}'s expertise is still in demand — ${money(fee)} in consulting fees.`;}},
+      {label:'Volunteer in the community', sub:'+joy, +legacy', effect:p=>{ fx(p,{happy:12,health:3}); setFlag(p,'goodHeart'); return `${p.first} gave their time to a cause that mattered. Retirement found its purpose.`;}},
+      {label:'Lean into the rest', sub:'+health', effect:p=>{ fx(p,{health:8,happy:6,stress:-15}); return `${p.first} made peace with slowing down. The garden never looked better.`;}},
+    ]},
+  { id:'downsize_home', emoji:'🏡', title:'Downsizing', once:true,
+    when:p=>p.retired&&p.age>=64&&p.assets&&p.assets.some(a=>a.kind==='house'), weight:1.6,
+    body:p=>`The big family home feels empty now. ${capFirst(p.first)} could downsize and free up cash for retirement.`,
+    choices:[
+      {label:'Sell and downsize', sub:'+$, +simplicity', effect:p=>{ const gain=80000+rnd(300000); p.money+=gain; fx(p,{happy:6,stress:-10}); const h=p.assets.find(a=>a.kind==='house'); if(h)h.beds=2; return `${p.first} sold the big house and pocketed ${money(gain)}. Less to clean, more to spend.`;}},
+      {label:'Keep it for the grandkids', sub:'+family, -upkeep', effect:p=>{ const cost=Math.min(p.money,8000); fx(p,{money:-cost,happy:8}); setFlag(p,'familyHome'); return `${p.first} kept the family home full of memories — and noisy with grandkids on holidays.`;}},
+      {label:'Move somewhere sunny', sub:'-$, +joy, +health', effect:p=>{ const cost=Math.min(p.money,40000); fx(p,{money:-cost,happy:12,health:6}); setFlag(p,'retiredInParadise'); return `${p.first} retired to somewhere warm. Every morning feels like vacation.`;}},
     ]},
   // ---------- OLD AGE & LEGACY ----------
   { id:'write_will', emoji:'📜', title:'Putting affairs in order', once:true,
@@ -3028,6 +3157,77 @@ const PRISON_EVENTS=[
       {label:'Show genuine remorse', sub:'+parole odds', effect:p=>{ if(hasFlag(p,'modelInmate')||chance(55)){ p.prisonYears=Math.max(0,p.prisonYears-2); fx(p,{happy:6}); return `The board was moved. ${p.first}'s sentence was shortened.`;} fx(p,{happy:-3}); return `The board wasn't convinced this time.`;}},
       {label:'Stay defiant', sub:'-parole, +rep', effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)+8); fx(p,{happy:1}); return `${p.first} refused to grovel. The block respects it; the board doesn't.`;}},
     ]},
+  // ===== DANGER & VIOLENCE =====
+  { id:'pr_shanking', emoji:'🔪', title:'A shank in the dark', 
+    when:p=>(p.prisonRep||0)>=10, weight:2.5,
+    body:p=>`${p.first} is jumped in a blind spot — a sharpened blade flashing toward them.`,
+    choices:[
+      {label:'Fight for your life', sub:'survival', effect:p=>{ const survive = p.stats.athletic>55 || p.traits.includes('tough') || (p.powers&&p.powers.length) || chance(55); if(survive){ p.prisonRep=clamp((p.prisonRep||0)+22); seed(p,2,'thick_skin'); if(chance(40))addTrait(p,'brave'); return `${p.first} turned the blade on their attacker and walked away bloodied but alive. The block is terrified now.`;} fx(p,{health:-35}); seed(p,1,'near_death'); return `${p.first} was stabbed and nearly bled out in the yard. They survived — barely.`;}},
+      {label:'Take the hit and remember the face', sub:'+vengeance', effect:p=>{ fx(p,{health:-20}); setFlag(p,'holdsGrudge'); seed(p,3,'prison_revenge'); return `${p.first} took the wound and said nothing — but they know exactly who did it. Revenge will come.`;}},
+      {label:'Call in your crew for protection', sub:'+gang debt', need:p=>hasFlag(p,'prisonGang')||p.minions>0, effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)+10); setFlag(p,'owesGang'); return `${p.first}'s people closed ranks around them. Safe — but the debt will be called in.`;}},
+    ]},
+  { id:'pr_witness', emoji:'🤐', title:'A witness problem', 
+    when:p=>(p._wasCrime||p.job==='crimelord'||p.job==='villain'||(p.prisonRep||0)>=25), weight:2,
+    body:p=>`Word comes down: an inmate on the block is a witness set to testify against ${p.first}'s organization. The boss outside wants it handled.`,
+    choices:[
+      {label:'Order them silenced', sub:'ruthless, risk', effect:p=>{ if(chance(28)){ p.prisonYears+=6+rnd(6); p.record.push('Murder (prison)'); fx(p,{happy:-6}); return `It got traced back. ${p.first}'s sentence ballooned — but the witness is gone.`;} p.prisonRep=clamp((p.prisonRep||0)+25); setFlag(p,'ruthless'); setFlag(p,'madeBones'); addTrait(p,'hot_temper',true); return `The witness never made it to the stand. ${p.first}'s name now carries real weight in the underworld.`;}},
+      {label:'Do it yourself', sub:'+terrifying rep, +risk', effect:p=>{ if(chance(35)){ p.prisonYears+=8+rnd(8); p.lifeSentence=p.lifeSentence||chance(30); p.record.push('Murder (prison)'); return `${p.first} was caught red-handed. The walls just got a lot more permanent.`;} p.prisonRep=100; setFlag(p,'madeBones'); setFlag(p,'coldBlooded'); addTrait(p,'brave'); return `${p.first} handled it personally. After this, even the lifers step aside when they pass.`;}},
+      {label:'Refuse — you\'re no killer', sub:'+conscience, -underworld rep', effect:p=>{ fx(p,{happy:4}); p.prisonRep=clamp((p.prisonRep||0)-10); clearFlag(p,'madeBones'); setFlag(p,'hasLimits'); return `${p.first} wouldn't cross that line. The organization noted it — weakness, to them.`;}},
+    ]},
+  { id:'pr_guard_turn', emoji:'👮', title:'A guard who can be bought', 
+    when:p=>(p.prisonRep||0)>=20||p.money>=5000, weight:2,
+    body:p=>`A guard has money troubles, and ${p.first} can smell it. The right approach could turn them.`,
+    choices:[
+      {label:'Bribe them onto your payroll', sub:'-$, +control', effect:p=>{ const c=Math.min(p.money,5000); if(p.money<2000){fx(p,{happy:-2});return `${p.first} couldn't put together enough to make it worth the guard's risk.`;} fx(p,{money:-c}); setFlag(p,'ownsGuard'); p.prisonRep=clamp((p.prisonRep||0)+10); return `The guard works for ${p.first} now — phones, contraband, blind eyes, and intel on every transfer.`;}},
+      {label:'Blackmail them', sub:'leverage, risk', effect:p=>{ if(p.stats.smarts>55||chance(50)){ setFlag(p,'ownsGuard'); setFlag(p,'blackmailer'); p.prisonRep=clamp((p.prisonRep||0)+14); return `${p.first} dug up the guard's secret and owns them completely now. Cheaper than a bribe.`;} fx(p,{health:-8}); p.prisonYears+=1; return `The guard called the bluff and ${p.first} caught a beating and a write-up.`;}},
+      {label:'Recruit them for the outside', sub:'+future asset', effect:p=>{ if(chance(45)){ setFlag(p,'ownsGuard'); setFlag(p,'corruptContact'); return `${p.first} convinced the guard to join the organization for good. A loyal man on the outside, waiting.`;} return `The guard wasn't ready to go that far. Yet.`;}},
+    ]},
+  { id:'pr_crew_arrives', emoji:'🚐', title:'One of your own gets sent up', once:true,
+    when:p=>(p.job==='crimelord'||p.job==='villain'||p.minions>0||p.henchman)&&(p.prisonRep||0)>=15, weight:2.5,
+    body:p=>{ const who=p.henchman?p.henchman.name.split(' ')[0]:'one of the crew'; return `A fresh transfer walks onto the block — it's ${who}, busted on a separate charge. Now they're inside with ${p.first}.`;},
+    choices:[
+      {label:'Reunite and run the block together', sub:'+power inside', effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)+20); p.minions=(p.minions||0)+1; p.minionPower=clamp((p.minionPower||0)+6); setFlag(p,'crewInside'); return `With muscle ${p.first} trusts inside, the two of them start carving up the prison economy.`;}},
+      {label:'Use them to send a message outside', sub:'+reach', effect:p=>{ setFlag(p,'crewInside'); p.prisonRep=clamp((p.prisonRep||0)+10); return `${p.first} now has a courier between the block and the streets. The operation never stopped running.`;}},
+      {label:'Keep your distance — too much heat', sub:'+caution', effect:p=>{ fx(p,{happy:-1}); return `${p.first} kept it cool. Two known associates together draws the wrong attention.`;}},
+    ]},
+  { id:'pr_recruit_inside', emoji:'🧑‍🤝‍🧑', title:'Talent on the inside', 
+    when:p=>(p.prisonRep||0)>=35, weight:2,
+    body:p=>`A sharp, dangerous young inmate is getting out soon and looking for a future. ${capFirst(p.first)} could put them to work.`,
+    choices:[
+      {label:'Recruit them to your crew', sub:'+minion on release', effect:p=>{ p.minions=(p.minions||0)+1; p.minionPower=clamp((p.minionPower||0)+5); setFlag(p,'recruitedInside'); return `${p.first} brought them into the fold. When they walk free, they'll be working for ${p.first}.`;}},
+      {label:'Groom them as a lieutenant', sub:'+loyal enforcer', effect:p=>{ if(!p.henchman){ p.henchman={name:villainName(),loyalty:80}; return `${p.first} forged a hardened loyalist in ${p.henchman.name}. A right hand made in hell.`;} p.minionPower=clamp((p.minionPower||0)+8); return `${p.first} sharpened a promising soldier into a true enforcer.`;}},
+      {label:'Pass — trust no one', sub:'+caution', effect:p=>{ return `${p.first} keeps their circle small. Trust gets you killed in here.`;}},
+    ]},
+  { id:'pr_revenge', emoji:'🩸', title:'Settling a score', 
+    when:p=>hasFlag(p,'holdsGrudge'), weight:3,
+    body:p=>`The inmate who came at ${p.first} before is alone in the laundry. No cameras. No witnesses.`,
+    choices:[
+      {label:'Take your revenge', sub:'+fearsome rep', effect:p=>{ clearFlag(p,'holdsGrudge'); if(chance(20)){ p.prisonYears+=4+rnd(4); p.record.push('Assault (prison)'); return `${p.first} got their payback but caught the charge. Worth it, some would say.`;} p.prisonRep=clamp((p.prisonRep||0)+25); setFlag(p,'coldBlooded'); addTrait(p,'hot_temper',true); return `${p.first} repaid the debt in full. The whole block learned what happens when you cross them.`;}},
+      {label:'Let it go', sub:'+wisdom', effect:p=>{ clearFlag(p,'holdsGrudge'); fx(p,{happy:4,stress:-8}); return `${p.first} chose to let the grudge die. Some weights aren't worth carrying.`;}},
+    ]},
+  { id:'pr_solitary', emoji:'🕳️', title:'Thrown in solitary', 
+    when:p=>(p.prisonRep||0)>=30, weight:1.6,
+    body:p=>`After an incident, ${p.first} is dragged to solitary confinement. Weeks of silence and concrete await.`,
+    choices:[
+      {label:'Harden your mind', sub:'+resolve', effect:p=>{ fx(p,{happy:-8,health:-4}); p.prisonRep=clamp((p.prisonRep||0)+12); if(chance(45))addTrait(p,'tough'); seed(p,2,'thick_skin'); return `${p.first} came out of the hole colder and harder than they went in. Nothing rattles them now.`;}},
+      {label:'It nearly breaks you', sub:'-health', effect:p=>{ fx(p,{health:-10,happy:-15,stress:20}); if(chance(30))addTrait(p,'anxious',true); return `The isolation gnawed at ${p.first}'s mind. They were never quite the same.`;}},
+    ]},
+  { id:'pr_kingpin_summons', emoji:'🚬', title:'The old kingpin\'s offer', once:true,
+    when:p=>(p.prisonRep||0)>=45&&p.prisonRole!=='shotcaller', weight:2.5,
+    body:p=>`A legendary aging crime boss, decades into a life sentence, summons ${p.first} to his table. He sees potential.`,
+    choices:[
+      {label:'Become his protégé', sub:'+underworld mastery', effect:p=>{ fx(p,{smarts:6}); p.prisonRep=clamp((p.prisonRep||0)+20); setFlag(p,'kingpinProtege'); addTrait(p,'sly',true); seed(p,3,'underworld_connections'); return `The old boss taught ${p.first} everything — the contacts, the codes, the cold arithmetic of power. A master's education in crime.`;}},
+      {label:'Challenge his authority', sub:'bold, dangerous', effect:p=>{ if((p.prisonRep||0)>60&&chance(50)){ p.prisonRole='shotcaller'; p.prisonRep=100; setFlag(p,'tookTheThrone'); return `${p.first} faced the old lion down and took everything he had. A new boss is crowned in blood and nerve.`;} fx(p,{health:-20}); p.prisonRep=clamp((p.prisonRep||0)-15); return `${p.first} overreached. The old man's people made an example of them.`;}},
+      {label:'Decline respectfully', sub:'+safe', effect:p=>{ fx(p,{happy:2}); return `${p.first} bowed out gracefully. The old boss respected the honesty, at least.`;}},
+    ]},
+  { id:'pr_gang_war', emoji:'⚔️', title:'Gang war on the block', 
+    when:p=>(hasFlag(p,'prisonGang')||p.prisonRole==='shotcaller')&&(p.prisonRep||0)>=25, weight:2,
+    body:p=>`Two factions are about to go to war across the whole prison. ${capFirst(p.first)} is deep enough in to shape what happens.`,
+    choices:[
+      {label:'Lead your side to victory', sub:'+control, +risk', effect:p=>{ if(chance(55)){ p.prisonRep=clamp((p.prisonRep||0)+30); setFlag(p,'wonGangWar'); if(p.prisonRole!=='shotcaller'&&(p.prisonRep||0)>=80){p.prisonRole='shotcaller';} return `${p.first} led their faction to total victory. The block has one master now.`;} fx(p,{health:-25}); p.prisonYears+=2+rnd(3); return `The war went badly. ${p.first} survived, but bloodied, with time added.`;}},
+      {label:'Broker a truce', sub:'+respect, +smarts', effect:p=>{ if(p.stats.smarts>50||chance(50)){ p.prisonRep=clamp((p.prisonRep||0)+18); setFlag(p,'powerBroker'); fx(p,{smarts:4}); return `${p.first} sat both sides down and brokered peace. The kind of power that outlasts muscle.`;} return `The truce talks collapsed. At least ${p.first} stayed out of the worst of it.`;}},
+      {label:'Stay out of it', sub:'safe', effect:p=>{ fx(p,{happy:-2}); return `${p.first} kept clear of the bloodshed. Survival over glory.`;}},
+    ]},
 ];
 function rollPrisonEvent(p){
   if(!p.alive || !p.inPrison) return null;
@@ -3599,10 +3799,15 @@ function lifeSummary(p){
   if(p.doomsdayLevel>=2) items.push('Held the world to ransom');
   if(p.powers && p.powers.length) items.push(`Wielded powers: ${p.powers.slice(0,3).join(', ')}`);
   if(p.prisonRole==='shotcaller') items.push('Ran a prison from the inside');
+  if(hasFlag(p,'tookTheThrone')||hasFlag(p,'wonGangWar')) items.push('Ruled the cellblock by force');
+  if(hasFlag(p,'madeBones')||hasFlag(p,'coldBlooded')) items.push('Earned a fearsome underworld reputation');
+  if(hasFlag(p,'kingpinProtege')) items.push('Trained under a legendary crime boss');
   if((p.businesses||[]).length) items.push(`Owned ${p.businesses.length} business${p.businesses.length===1?'':'es'}`);
   if(hasFlag(p,'philanthropist')) items.push('Gave generously to those in need');
   if(hasFlag(p,'lifetimeAward')) items.push('Received a lifetime achievement award');
   if(hasFlag(p,'wroteMemoir')) items.push('Wrote a memoir of their life');
+  if(hasFlag(p,'retiredInParadise')) items.push('Retired to paradise');
+  if(p.pension>50000) items.push('Retired on a generous pension');
   if(hasFlag(p,'worldTraveler')) items.push('Traveled the world in retirement');
   if(hasFlag(p,'belovedElder')||hasFlag(p,'familyHistorian')) items.push('A beloved grandparent');
   if(hasFlag(p,'dynastyBuilder')) items.push('Built a family dynasty');
@@ -4364,7 +4569,7 @@ const CAREER_CHOICES = {
   esports: (p)=>[
     O('🎮','Grind ranked all night','+skill, −health',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+4); p.stats.health=clamp(p.stats.health-4); log(`${p.first} climbed the ladder into the small hours. Mechanics sharper than ever.`,'good'); render(); }),
     O('🏆','Compete in the world championship','+fame, +$',0,()=>{ closeSheet(); const odds=30+(p.stats.smarts>75?25:0); if(chance(odds)){ const prize=100000+rnd(2000000); p.money+=prize; p.stats.fame=clamp(p.stats.fame+18); setFlag(p,'esportsChamp'); worldEvent(p,`${p.first} won the world esports championship.`,{hope:true}); log(`🏆 ${p.first} WON the world championship — ${money(prize)} prize.`,'big'); } else log(`${p.first}'s team was eliminated in the bracket. So close.`,'muted'); render(); }),
-    O('📺','Stream to build a fanbase','+followers, +$',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=0;} const g=5000+rnd(60000); p.socialFollowers+=g; p.stats.fame=clamp(p.stats.fame+4); const sub=Math.round(g*0.5); p.money+=sub; log(`${p.first} streamed to ${g.toLocaleString()} new followers and ${money(sub)} in subs.`,'good'); render(); }),
+    O('📺','Stream to build a fanbase','+followers, +$',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=startingFollowers(p);} const g=5000+rnd(60000); p.socialFollowers+=g; p.stats.fame=clamp(p.stats.fame+4); const sub=Math.round(g*0.5); p.money+=sub; log(`${p.first} streamed to ${g.toLocaleString()} new followers and ${money(sub)} in subs.`,'good'); render(); }),
     O('🪑','Get a team coaching role','longevity',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+3); setFlag(p,'esportsCoach'); log(`${p.first} moved into coaching — a way to stay in the game past their prime.`,'good'); render(); }),
   ],
   model: (p)=>[
@@ -4386,7 +4591,7 @@ const CAREER_CHOICES = {
     O('🎬','Cross into directing','reinvent yourself',0,()=>{ closeSheet(); if(p.stats.fame>35&&chance(50)){ p.stats.fame=clamp(p.stats.fame+8); setFlag(p,'actorDirector'); log(`${p.first} stepped behind the camera and earned respect as a director too.`,'good'); } else log(`${p.first}'s directorial debut was forgettable. Stick to acting?`,'muted'); render(); }),
   ],
   youtuber: (p)=>[
-    O('🎬','Make a viral video','+followers, +$',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=0;} const r=rnd(100); if(r<35){ const boom=50000+rnd(500000); p.socialFollowers+=boom; p.stats.fame=clamp(p.stats.fame+10); const ad=Math.round(boom*0.3); p.money+=ad; log(`${p.first}'s video EXPLODED — ${boom.toLocaleString()} subs and ${money(ad)} in ad revenue.`,'big'); } else { const g=rnd(15000); p.socialFollowers+=g; log(`${p.first}'s video did okay — ${g.toLocaleString()} new subs.`,'muted'); } render(); }),
+    O('🎬','Make a viral video','+followers, +$',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=startingFollowers(p);} const r=rnd(100); if(r<35){ const boom=50000+rnd(500000); p.socialFollowers+=boom; p.stats.fame=clamp(p.stats.fame+10); const ad=Math.round(boom*0.3); p.money+=ad; log(`${p.first}'s video EXPLODED — ${boom.toLocaleString()} subs and ${money(ad)} in ad revenue.`,'big'); } else { const g=rnd(15000); p.socialFollowers+=g; log(`${p.first}'s video did okay — ${g.toLocaleString()} new subs.`,'muted'); } render(); }),
     O('💰','Sign with a brand sponsor','+$$',0,()=>{ closeSheet(); if((p.socialFollowers||0)>10000||chance(40)){ const deal=Math.round((p.socialFollowers||10000)*(0.5+Math.random()*2)); p.money+=deal; log(`${p.first} signed a sponsorship — ${money(deal)}.`,'big'); } else log(`${p.first}'s channel is too small for sponsors yet.`,'muted'); render(); }),
     O('🛍','Sell channel merch','+$',0,()=>{ closeSheet(); const rev=Math.round((p.socialFollowers||5000)*(0.2+Math.random())); p.money+=rev; log(`${p.first}'s merch drop pulled in ${money(rev)}.`,'good'); render(); }),
     O('📉','Survive a controversy','reputation risk',0,()=>{ closeSheet(); if(chance(55)){ p.stats.fame=clamp(p.stats.fame+4); log(`${p.first} weathered some drama and came out fine.`,'muted'); } else { const loss=Math.round((p.socialFollowers||0)*0.2); p.socialFollowers=Math.max(0,(p.socialFollowers||0)-loss); log(`A controversy cost ${p.first} ${loss.toLocaleString()} subscribers.`,'bad'); } render(); }),
@@ -4429,7 +4634,7 @@ const CAREER_CHOICES = {
   ],
   realtor: (p)=>[
     O('🏡','Chase a luxury listing','big commission',0,()=>{ closeSheet(); if(p.stats.charming>55||chance(45)){ const comm=20000+rnd(400000); p.money+=comm; p.stats.fame=clamp(p.stats.fame+4); log(`${p.first} closed a luxury sale — ${money(comm)} commission.`,'big'); } else log(`The deal fell through at the last minute. Heartbreaking.`,'muted'); render(); }),
-    O('📣','Build your personal brand','+future deals',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=0;} p.socialFollowers+=rnd(8000); p.stats.fame=clamp(p.stats.fame+3); setFlag(p,'brandedRealtor'); log(`${p.first} put their face on benches and billboards. Leads are coming in.`,'good'); render(); }),
+    O('📣','Build your personal brand','+future deals',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=startingFollowers(p);} p.socialFollowers+=rnd(8000); p.stats.fame=clamp(p.stats.fame+3); setFlag(p,'brandedRealtor'); log(`${p.first} put their face on benches and billboards. Leads are coming in.`,'good'); render(); }),
     O('🏘','Invest in a rental property','passive income',0,()=>{ closeSheet(); const cost=Math.min(p.money,120000); if(p.money<120000){log(`${p.first} needs $120,000 to buy an investment property.`,'muted');render();return;} p.money-=cost; p.businesses=p.businesses||[]; p.businesses.push({name:'Rental Property',value:130000}); log(`${p.first} bought a rental, putting their expertise to work for themselves.`,'big'); render(); }),
     O('🏢','Open your own brokerage','+$$, ambitious',0,()=>{ closeSheet(); const odds=35+(p.jobYears>5?20:0); if(chance(odds)){ p.jobTitle='Broker/Owner'; p.salary=Math.round(p.salary*1.6); log(`${p.first} opened their own brokerage with agents under them.`,'big'); } else log(`${p.first} isn't quite ready to run their own shop.`,'muted'); render(); }),
   ],
@@ -4490,7 +4695,41 @@ function openCareer(){
   }
 
   if(p.job==='none'){
+    // RETIRED — a distinct, dignified state with its own income and activities
+    if(p.retired){
+      const ssActive = p.age>=65||p.claimedSS;
+      const ss = ssActive ? Math.round(Math.min(45000,12000+(p.careerYears||0)*700)*(p.claimedSS&&p.age<65?0.7:1)) : 0;
+      html+=`<div style="padding:4px 20px 10px">
+        <div style="font-size:13px;color:var(--ink-dim)">🌅 Retired</div>
+        <div style="font-size:20px;font-weight:600;margin:2px 0">Enjoying the golden years</div>
+        <div style="font-size:13px;color:var(--gold)">${p.pension>0?money(p.pension)+'/yr pension':'no pension'}${ss>0?' · '+money(ss)+'/yr Social Security':(p.age<65?' · Social Security at 65':'')}</div>
+      </div>`;
+      opts.push(OH('— Retirement life —'));
+      if(!p.partTime){
+        opts.push(O('🧑‍💼','Take an encore part-time job','+income, +purpose',0,()=>{ const pay=8000+rnd(25000); p.partTime={name:'Encore work',pay}; closeSheet(); p.stats.happy=clamp(p.stats.happy+6); log(`${p.first} took easygoing part-time work — ${money(pay)}/yr.`,'good'); render(); }));
+      } else {
+        opts.push(O('🧺','Stop the part-time work',p.partTime.name,0,()=>{ closeSheet(); p.partTime=null; log(`${p.first} hung up the part-time job for good.`,'muted'); render(); }));
+      }
+      if((p.peakSalary||0)>50000){
+        opts.push(O('💼','Consult in your old field','+$$',0,()=>{ closeSheet(); const fee=Math.round((p.peakSalary||50000)*(0.3+Math.random()*0.5)); p.money+=fee; p.stats.happy=clamp(p.stats.happy+4); log(`${p.first} cashed in on decades of expertise — ${money(fee)} in consulting.`,'good'); render(); }));
+      }
+      opts.push(O('🤝','Volunteer','+joy, +legacy',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+8); p.stats.health=clamp(p.stats.health+2); setFlag(p,'goodHeart'); log(`${p.first} spent their days giving back. A meaningful retirement.`,'good'); render(); }));
+      opts.push(O('🎣','Enjoy a hobby','+joy, +health',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+7); p.stats.health=clamp(p.stats.health+4); p.stress=clamp((p.stress||0)-10); log(`${p.first} lost a happy afternoon in a favorite pastime.`,'good'); render(); }));
+      if(!p.claimedSS && p.age>=62 && p.age<65){
+        opts.push(O('📋','Claim Social Security early','reduced, but now',0,()=>{ closeSheet(); p.claimedSS=true; log(`${p.first} began claiming Social Security early at a reduced rate.`,'muted'); render(); }));
+      }
+      opts.push(OH('— Back to work? —'));
+      opts.push(O('🔄','Come out of retirement','find a new job',0,()=>{ closeSheet(); p.retired=false; openCareer(); }));
+      sheet(html+opts.join(''), sh=>bindOpts(sh));
+      return;
+    }
     html+=`<p class="hint">${p.first} isn't working right now. Time to find a path.</p>`;
+    // offer retirement instead of a job for older characters who've worked
+    if(p.age>=60 && (p.careerYears||0)>=3){
+      opts.push(OH('— A well-earned rest —'));
+      const yrs=p.careerYears||0; const peak=Math.max(p.peakSalary||0,0); const est=Math.round(peak*Math.min(0.6,0.012*yrs));
+      opts.push(O('🌅','Retire',`${est>0?money(est)+'/yr pension':'live off savings'} + Social Security`,0,()=>{ closeSheet(); doRetire(p); p.stats.happy=clamp(p.stats.happy+12); p.stress=clamp((p.stress||0)-20); render(); }));
+    }
     opts.push(OH('— Find a career —'));
     CAREERS.filter(c=>c.k!=='none').forEach(c=>{
       const eduGate = p.edu < c.edu;
@@ -4570,6 +4809,10 @@ function openCareer(){
   opts.push(O('💼','Work harder this year','+pay odds, −health',0,()=>{p.stats.happy=clamp(p.stats.happy-4);p.stats.health=clamp(p.stats.health-3);if(chance(45)){const b=Math.round(p.salary*0.12);p.money+=b;closeSheet();log(`${p.first} grinded and pocketed a ${money(b)} bonus.`,'good');render();}else{closeSheet();log(`${p.first} worked hard. Nobody noticed.`,'muted');render();}}));
   opts.push(O('💬','Ask for a raise','+salary maybe',0,()=>{ closeSheet(); const odds=40+(p.jobYears>3?15:0)+(p.stats.charming>55?15:0); if(chance(odds)){ const r=Math.round(p.salary*(0.08+Math.random()*0.12)); p.salary+=r; log(`${p.first} negotiated a ${money(r)} raise.`,'good'); } else log(`The boss said "maybe next year." ${p.first} fumed.`,'muted'); render(); }));
   opts.push(O('🚪','Quit this job','walk away',0,()=>{closeSheet();endJob(p,`${p.first} quit. Free, for now.`);render();}));
+  if(p.age>=60 && (p.careerYears||p.jobYears||0)>=3){
+    const yrs=p.careerYears||p.jobYears||0; const peak=Math.max(p.peakSalary||0,p.salary||0); const est=Math.round(peak*Math.min(0.6,0.012*yrs));
+    opts.push(O('🌅','Retire',`${est>0?money(est)+'/yr pension':'live off savings'} + Social Security`,0,()=>{ closeSheet(); doRetire(p); p.stats.happy=clamp(p.stats.happy+12); p.stress=clamp((p.stress||0)-20); render(); }));
+  }
 
   sheet(html+opts.join(''), sh=>bindOpts(sh));
 }
@@ -4589,9 +4832,19 @@ function openActivities(){
     if((p.prisonRep||0)>=20){
       opts.push(OH('— The hustle —'));
       opts.push(O('📦','Run contraband','+money, risk',0,()=>{ closeSheet(); if(chance(22)){ p.prisonYears+=1; log(`${p.first} got caught smuggling — time added.`,'bad'); } else { const t=200+rnd(1500); p.money+=t; setFlag(p,'prisonNetwork'); log(`${p.first}'s smuggling cleared ${money(t)}.`,'good'); } render(); }));
+      opts.push(O('💪','Throw your weight around','+rep, risk',0,()=>{ closeSheet(); if(p.stats.athletic>50||chance(55)){ p.prisonRep=clamp((p.prisonRep||0)+10); log(`${p.first} made an example of someone. The block fell in line.`,'good'); } else { p.stats.health=clamp(p.stats.health-12); log(`${p.first} picked the wrong target and took a beating.`,'bad'); } render(); }));
+    }
+    // boss-track: build a crew inside, climb toward running the block
+    if((p.prisonRep||0)>=30 && p.prisonRole!=='shotcaller'){
+      opts.push(OH('— Building power —'));
+      opts.push(O('🧑‍🤝‍🧑','Recruit inmates to your crew','+future minions',0,()=>{ closeSheet(); if(chance(70)){ p.minions=(p.minions||0)+1; p.minionPower=clamp((p.minionPower||0)+4); p.prisonRep=clamp((p.prisonRep||0)+6); setFlag(p,'recruitedInside'); log(`${p.first} brought another soldier into the fold — they'll serve on the outside too.`,'good'); } else { log(`${p.first}'s recruitment pitch fell flat this time.`,'muted'); } render(); }));
+      opts.push(O('👑','Make a play for the block','seize control, risky',0,()=>{ closeSheet(); if((p.prisonRep||0)>=70&&chance(55)){ p.prisonRole='shotcaller'; p.prisonRep=100; worldEvent(p,`${p.first} seized control of the entire prison.`,{fear:true}); log(`${p.first} took the block by force. The throne behind bars is theirs.`,'big'); } else if((p.prisonRep||0)>=70){ p.stats.health=clamp(p.stats.health-18); log(`${p.first}'s power play was crushed. They'll need to rebuild.`,'bad'); } else { log(`${p.first} isn't feared enough yet to make that move. Build more respect first.`,'muted'); } render(); }));
     }
     if(p.prisonRole==='shotcaller'){
-      opts.push(O('👑','Run the block','+big money',0,()=>{ closeSheet(); const t=2000+rnd(8000); p.money+=t; log(`Tribute from the whole prison: ${money(t)}.`,'good'); render(); }));
+      opts.push(OH('— Running the block —'));
+      opts.push(O('👑','Collect tribute','+big money',0,()=>{ closeSheet(); const t=2000+rnd(8000); p.money+=t; log(`Tribute from the whole prison: ${money(t)}.`,'good'); render(); }));
+      opts.push(O('🤝','Corrupt a guard','+freedom inside',0,()=>{ closeSheet(); const c=Math.min(p.money,3000); p.money-=c; setFlag(p,'ownsGuard'); log(`${p.first} put another guard on the payroll. The walls mean less every day.`,'muted'); render(); }));
+      opts.push(O('📡','Run your empire from inside','+outside power',0,()=>{ closeSheet(); if(p.job==='crimelord'){ p.territory=clamp((p.territory||0)+3); log(`${p.first} kept the organization running through coded messages. The territory holds.`,'good'); } else { p.minionPower=clamp((p.minionPower||0)+4); log(`${p.first} kept the crew sharp and loyal from behind bars.`,'good'); } render(); }));
     }
     // model behavior toward parole
     if(!p.lifeSentence){
@@ -4857,8 +5110,14 @@ function openActivities(){
       render();
     }));
     if(!p.onSocial){
-      opts.push(O('📱','Join social media','build a following, meet people',0,()=>{
-        p.onSocial=true; p.socialFollowers=rnd(300); closeSheet(); log(`${p.first} joined social media. The feed begins.`,'good'); render();
+      const preview = startingFollowers(p);
+      const fameNote = preview>50000 ? 'your fame brings a built-in audience' : preview>5000 ? 'you have a modest head start' : 'build a following, meet people';
+      opts.push(O('📱','Join social media',fameNote,0,()=>{
+        p.onSocial=true; p.socialFollowers=startingFollowers(p); closeSheet();
+        if(p.socialFollowers>50000) log(`${p.first} joined social media and instantly drew ${p.socialFollowers.toLocaleString()} followers — fame has its perks.`,'big');
+        else if(p.socialFollowers>5000) log(`${p.first} joined social media, starting with ${p.socialFollowers.toLocaleString()} followers.`,'good');
+        else log(`${p.first} joined social media with ${p.socialFollowers.toLocaleString()} followers. The feed begins.`,'good');
+        render();
       }));
     } else {
       const F=p.socialFollowers;
@@ -5021,7 +5280,9 @@ function openActivities(){
 }
 
 function enrollCollege(p,tier,years){ p._college=years; p._collegeTier=tier; p.inSchool=true; p.schoolLevel=EDU[tier]+' (in progress)'; const cost=tier===1?6000:tier===2?30000:45000; p.money-=Math.min(p.money,cost); closeSheet(); log(`${p.first} enrolled — ${EDU[tier]}. ${years} years ahead.`,'good'); render(); }
-function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; p._stage=null; p._stageYears=0; p._rung=0; closeSheet();
+function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; p._stage=null; p._stageYears=0; p._rung=0; p.retired=false; closeSheet();
+  // if already on social media, a high-profile new career swells the following toward its new ceiling
+  if(p.onSocial){ const ceiling=startingFollowers(p); if(ceiling>(p.socialFollowers||0)*1.5){ const jump=Math.round(((ceiling)-(p.socialFollowers||0))*0.6); if(jump>2000){ p.socialFollowers=(p.socialFollowers||0)+jump; log(`${p.first}'s new career drew ${jump.toLocaleString()} new followers to their socials.`,'good'); } } }
   if(c.staged){ p._stage=0; p._stageYears=0; p.jobTitle=c.stages[0].t;
     // a matching high-school club gives a head start
     const cl=CLUBS.find(x=>x.helps===c.k);
