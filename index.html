@@ -325,6 +325,41 @@ const CAREERS=[
       {t:'Blockbuster Dir.', mult:26,  years:4, req:82, fame:38},
       {t:'Legendary Auteur', mult:40,  years:5, req:88, fame:55},
     ]},
+  {k:'popstar', l:'Pop Star', emoji:'🎤', edu:0, base:14000, keyStat:'fame', staged:true,
+    stages:[
+      {t:'Open Mic Singer',  mult:1,   years:0, req:0,  fame:2},
+      {t:'Local Gigging',    mult:2,   years:2, req:20, fame:5},
+      {t:'Signed Artist',    mult:6,   years:2, req:38, fame:12},
+      {t:'Charting Single',  mult:16,  years:2, req:55, fame:24},
+      {t:'Platinum Album',   mult:38,  years:3, req:72, fame:42},
+      {t:'Global Pop Icon',  mult:70,  years:3, req:85, fame:60},
+    ]},
+  {k:'restaurateur', l:'Chef → Restaurateur', emoji:'👨‍🍳', edu:1, base:32000, keyStat:'smarts', staged:true,
+    stages:[
+      {t:'Line Cook',        mult:1,   years:0, req:0,  fame:0},
+      {t:'Sous Chef',        mult:1.8, years:2, req:50, fame:1},
+      {t:'Head Chef',        mult:3.2, years:3, req:60, fame:4},
+      {t:'Restaurant Owner', mult:7,   years:3, req:70, fame:10},
+      {t:'Restaurant Group', mult:16,  years:4, req:80, fame:20},
+      {t:'Celebrity Chef',   mult:34,  years:4, req:88, fame:42},
+    ]},
+  {k:'esports', l:'Esports Pro', emoji:'🎮', edu:0, base:26000, keyStat:'smarts', staged:true, short:true,
+    stages:[
+      {t:'Ranked Grinder',   mult:1,   years:0, req:0,  fame:1},
+      {t:'Semi-Pro',         mult:2.5, years:1, req:55, fame:4},
+      {t:'Pro Team Sub',     mult:6,   years:2, req:66, fame:9},
+      {t:'Starting Roster',  mult:14,  years:2, req:76, fame:18},
+      {t:'World Finalist',   mult:30,  years:2, req:84, fame:32},
+      {t:'Esports Legend',   mult:48,  years:3, req:90, fame:48},
+    ]},
+  {k:'astronaut', l:'Astronaut', emoji:'🚀', edu:3, base:80000, keyStat:'smarts', staged:true, danger:true,
+    stages:[
+      {t:'Candidate',        mult:1,   years:0, req:0,  fame:1},
+      {t:'Mission Specialist',mult:1.6,years:3, req:70, fame:6},
+      {t:'Shuttle Crew',     mult:2.6, years:3, req:80, fame:18},
+      {t:'Mission Commander',mult:4,   years:3, req:88, fame:36},
+      {t:'Moonwalker',       mult:6,   years:4, req:93, fame:60},
+    ]},
 ];
 const CAREER=k=>CAREERS.find(c=>c.k===k);
 
@@ -339,6 +374,9 @@ const CLUBS=[
   {k:'debate',   l:'Debate Team',    emoji:'🗣', stat:'smarts',   boost:2, helps:'lawyer',    flag:'club_debate',  blurb:'a sharp tongue'},
   {k:'track',    l:'Track & Field',  emoji:'🏃', stat:'athletic', boost:3, helps:'nba',       flag:'club_track',   blurb:'speed and stamina'},
   {k:'science',  l:'Science Olympiad',emoji:'🔬',stat:'smarts',   boost:3, helps:'doctor',    flag:'club_science', blurb:'lab discipline'},
+  {k:'band',     l:'School Band',     emoji:'🎺', stat:'fame',     boost:2, helps:'popstar',   flag:'club_band',    blurb:'stage confidence'},
+  {k:'culinary', l:'Culinary Club',   emoji:'🍳', stat:'smarts',   boost:2, helps:'restaurateur',flag:'club_culinary',blurb:'kitchen instincts'},
+  {k:'gaming',   l:'Esports Club',    emoji:'🕹', stat:'smarts',   boost:3, helps:'esports',   flag:'club_gaming',  blurb:'fast reflexes'},
 ];
 
 /* education tiers */
@@ -369,6 +407,8 @@ function blankPerson(opt={}){
     money: opt.money ?? 0,
     insured:false, insurePremium:0,
     married:false, partnerName:null, partnerId:null,
+    partnerHistory:[], // {name, sex, kind:'Spouse'|'Ex-spouse'|'Late spouse'|'Fling', from, to, kids}
+    autonomous:false,  // once true, this person lives an offscreen life each year
     rels: opt.rels ?? [],   // {name,kind,sex,bond,alive,id}
     childrenIds: [],
     parentIds: opt.parentIds ?? [],
@@ -429,6 +469,8 @@ function migrate(){
     if(!p.flags) p.flags={};
     if(!p.seenEvents) p.seenEvents=[];
     if(!p.clubs) p.clubs=[];
+    if(!p.partnerHistory) p.partnerHistory=[];
+    if(p.autonomous==null) p.autonomous=false;
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
@@ -623,13 +665,15 @@ function ageUp(){
     // light passive development for off-screen kin
     if(other.age<=18){ other.stats.smarts=clamp(other.stats.smarts+0.8); other.stats.athletic=clamp(other.stats.athletic+0.5); }
     else if(other.age>55){ other.stats.health=clamp(other.stats.health-1.0-(other.age-55)*0.1); }
-    // keep their relationship-card age in sync for the player
-    const card=p.rels.find(r=>r.id===other.id); // noop, ages tracked on person
+    // give offscreen adults their own unfolding lives — but only close kin, to keep the world bounded
+    const closeKin = other.gen>=p.gen && other.gen<=p.gen+1 && isCloseRelative(p,other);
+    if(other.age>=18 && closeKin) autonomousLife(other);
     // off-screen natural death for elderly kin (rare, avoids immortal ancestors)
     if(other.age>70 && chance((other.age-70)*0.8)){ other.alive=false; other.deathAge=other.age;
       const rc=p.rels.find(r=>r.id===other.id); if(rc) rc.alive=false;
     }
   });
+  pruneTree(p);
 
   // natural drift
   p.stats.health = clamp(p.stats.health + (p.age>50? -1.2 - (p.age-50)*0.12 : (p.age<25? +0.4:0)) + (p.traits.includes('tough')?0.5:0) + rndDrift());
@@ -732,6 +776,53 @@ function systemsTick(p){
     p.socialFollowers+=growth;
     p.stats.fame=clamp(p.stats.fame + Math.min(3, p.socialFollowers/50000));
     if(p.socialFollowers>50000 && chance(20)){ const sponsor=Math.round(p.socialFollowers*(0.5+Math.random())); p.money+=sponsor; log(`A brand deal landed ${p.first} ${money(sponsor)} from their following.`,'good'); }
+  }
+}
+
+/* ============================================================
+   AUTONOMY — offscreen relatives live their own quiet lives:
+   they get jobs, partner up, have kids, build a little wealth.
+   Kept lightweight (no logging) but produces real, inheritable people.
+   ============================================================ */
+function autonomousLife(o){
+  o.autonomous=true;
+  // pick up a job in their 20s, scaled to their smarts
+  if(o.job==='none' && o.age>=20 && o.age<=55 && chance(28)){
+    const pool=CAREERS.filter(c=>c.k!=='none'&&!c.wild&&!c.staged&&!c.athGate&&!c.looksGate&&(c.edu||0)<= (o.smartsEdu||(o.stats.smarts>70?3:o.stats.smarts>55?2:o.stats.smarts>40?1:0)));
+    if(pool.length){ const j=pick(pool); o.job=j.k; o.salary=j.base; o.jobYears=0; }
+  }
+  // earn / spend
+  if(o.job!=='none'){
+    const c=CAREER(o.job); o.jobYears=(o.jobYears||0)+1;
+    o.salary=Math.round((c.base||30000)+(o.jobYears*(c.grow||1000)));
+    const costs=12000+(o.married?7000:0)+o.childrenIds.length*9000;
+    o.money=(o.money||0)+(o.salary-costs);
+    // occasional retirement
+    if(o.age>64 && chance(30)){ o.job='none'; o.salary=0; }
+  }
+  // partner up
+  if(!o.married && o.age>=22 && o.age<=60 && chance(14)){
+    const sx=makeSex();
+    const sp={name:newFirst(sx)+' '+pick(LAST),kind:'Spouse',sex:sx,bond:55+rnd(30),alive:true,id:nid()};
+    o.rels.push(sp); o.married=true; o.partnerName=sp.name;
+    if(!o.partnerHistory) o.partnerHistory=[];
+    o.partnerHistory.push({id:sp.id,name:sp.name,sex:sx,from:G.year,to:null,status:'Spouse',kids:0});
+  }
+  // have kids (these become real people in the tree, inheritable)
+  if(o.married && o.age>=22 && o.age<=46 && o.childrenIds.length<4 && chance(20)){
+    const csx=makeSex();
+    const kid=blankPerson({first:newFirst(csx),last:o.last,sex:csx,gen:o.gen+1,born:G.year,age:0,parentIds:[o.id]});
+    kid.stats.smarts=clamp((o.stats.smarts+(50+rnd(30)))/2);
+    if(o.traits.length) kid.traits=[pick(o.traits),pick(TRAITS).k].filter((v,i,a)=>a.indexOf(v)===i);
+    G.people.push(kid);
+    o.childrenIds.push(kid.id);
+    o.rels.push({name:kid.first+' '+kid.last,kind:'Child',sex:csx,bond:80,alive:true,id:kid.id});
+    const h=(o.partnerHistory||[]).find(x=>x.status==='Spouse'&&!x.to); if(h)h.kids=(h.kids||0)+1;
+  }
+  // small chance of divorce/widowhood offscreen
+  if(o.married && chance(2)){
+    const sp=o.rels.find(r=>r.kind==='Spouse'&&r.alive);
+    if(sp){ sp.kind='Ex-spouse'; o.married=false; const h=(o.partnerHistory||[]).find(x=>x.id===sp.id); if(h){h.status='Ex-spouse';h.to=G.year;} }
   }
 }
 
@@ -1263,9 +1354,45 @@ function die(p){
   setTimeout(()=>deathScreen(p),700);
 }
 
+function isCloseRelative(p, other){
+  // the player's own children, and the children of those children (grandchildren)
+  if(p.childrenIds.includes(other.id)) return true;
+  for(const cid of p.childrenIds){ const c=findP(G,cid); if(c && (c.childrenIds||[]).includes(other.id)) return true; }
+  return false;
+}
+function pruneTree(p){
+  // keep the tree from ballooning: cap total people, dropping the least-relevant dead ones first.
+  const CAP=140;
+  if(G.people.length<=CAP) return;
+  // never remove: the player, anyone alive, the player's direct children & grandchildren,
+  // or the player's ancestral line (parents chain via parentIds isn't stored as people, so just protect by gen<=player)
+  const protectedIds=new Set([p.id]);
+  p.childrenIds.forEach(id=>{ protectedIds.add(id); const c=findP(G,id); if(c)(c.childrenIds||[]).forEach(g=>protectedIds.add(g)); });
+  // candidates to remove: dead, not protected, older generations far from the player
+  const removable=G.people.filter(x=>!x.alive && !protectedIds.has(x.id))
+    .sort((a,b)=> (a.gen-b.gen) || ((a.deathAge||0)-(b.deathAge||0)) ); // oldest gens first
+  let toRemove=G.people.length-CAP;
+  const removeIds=new Set();
+  for(const x of removable){ if(toRemove<=0)break; removeIds.add(x.id); toRemove--; }
+  if(removeIds.size){
+    G.people = G.people.filter(x=>!removeIds.has(x.id));
+    // clean up dangling child references
+    G.people.forEach(x=>{ if(x.childrenIds) x.childrenIds=x.childrenIds.filter(id=>!removeIds.has(id)); });
+  }
+}
 function heirsOf(p){
+  // direct children first
   const kids = p.childrenIds.map(id=>findP(G,id)).filter(k=>k&&k.alive);
-  return kids;
+  if(kids.length) return kids;
+  // then grandchildren (children of the deceased's children)
+  let grandkids=[];
+  p.childrenIds.map(id=>findP(G,id)).filter(Boolean).forEach(child=>{
+    (child.childrenIds||[]).map(gid=>findP(G,gid)).filter(g=>g&&g.alive).forEach(g=>grandkids.push(g));
+  });
+  if(grandkids.length) return grandkids;
+  // finally, any living descendant in a later generation (nieces, cousins down the line)
+  const descendants = G.people.filter(x=>x.alive && x.gen>p.gen && x.id!==p.id);
+  return descendants.slice(0,6);
 }
 function deathScreen(deceased){
   const heirs = heirsOf(deceased);
@@ -1316,12 +1443,12 @@ function relTick(p){
     r.bond = clamp(r.bond + rndDrift(2));
     // parents/elders age out
     if((r.kind==='Mother'||r.kind==='Father') && chance(p.age>40?9:1.2)){ r.alive=false; log(`${p.first}'s ${r.kind.toLowerCase()} passed away.`,'death'); p.stats.happy=clamp(p.stats.happy-12);}
-    else if(chance(0.5+ (p.age>60?2:0))){ r.alive=false; if(r.kind==='Spouse'){p.married=false;log(`${r.name.split(' ')[0]} passed away. ${p.first} is a widow${p.sex==='m'?'er':''} now.`,'death');p.stats.happy=clamp(p.stats.happy-20);} }
+    else if(chance(0.5+ (p.age>60?2:0))){ r.alive=false; if(r.kind==='Spouse'){p.married=false;recordPartner(p,r,'Late spouse');log(`${r.name.split(' ')[0]} passed away. ${p.first} is a widow${p.sex==='m'?'er':''} now.`,'death');p.stats.happy=clamp(p.stats.happy-20);} }
   });
   // spouse can drift to divorce
   if(p.married && chance(3)){
     const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive);
-    if(sp && sp.bond<35){ p.married=false; sp.kind='Ex-spouse'; log(`${p.first} and ${sp.name.split(' ')[0]} divorced.`,'bad'); p.money-=Math.floor(p.money*0.3); p.stats.happy=clamp(p.stats.happy-15); }
+    if(sp && sp.bond<35){ p.married=false; sp.kind='Ex-spouse'; recordPartner(p,sp,'Ex-spouse'); log(`${p.first} and ${sp.name.split(' ')[0]} divorced.`,'bad'); p.money-=Math.floor(p.money*0.3); p.stats.happy=clamp(p.stats.happy-15); }
   }
 }
 
@@ -1336,7 +1463,7 @@ function openRelations(){
     const emoji=relEmoji(r);
     html+=`<div class="rel ${r.alive?'':'dead'}">
       <div class="av">${emoji}</div>
-      <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind}${r.alive?'':' · passed'}</div>
+      <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind}${r.note?' · '+r.note:''}${r.alive?'':' · passed'}</div>
       ${r.alive?`<div class="rbar"><i style="width:${r.bond}%;background:var(--${col.slice(2)})"></i></div>`:''}</div>
       ${r.alive?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="time">Spend<br>time</button>`:''}
     </div>`;
@@ -1361,6 +1488,14 @@ function openRelations(){
   if(p.age>=21){
     html+=`<button class="btn ghost" data-do="adopt" style="margin-top:8px">🤱 Adopt a child ($18,000)</button>`;
   }
+  // casual fling — single, can lead to a child out of wedlock
+  if(p.age>=18 && !p.married){
+    html+=`<button class="btn ghost" data-do="fling" style="margin-top:8px">🔥 Casual fling</button>`;
+  }
+  // partner history
+  if(p.partnerHistory && p.partnerHistory.length){
+    html+=`<button class="btn ghost" data-do="history" style="margin-top:8px">📜 Past loves (${p.partnerHistory.length})</button>`;
+  }
   html+=`</div>`;
   sheet(html, sh=>{
     sh.querySelectorAll('[data-act="time"]').forEach(b=>b.onclick=()=>{
@@ -1372,7 +1507,46 @@ function openRelations(){
     const baby=sh.querySelector('[data-do="baby"]'); if(baby)baby.onclick=()=>doBaby(p,false);
     const ivf=sh.querySelector('[data-do="ivf"]'); if(ivf)ivf.onclick=()=>doBaby(p,true);
     const adopt=sh.querySelector('[data-do="adopt"]'); if(adopt)adopt.onclick=()=>doAdopt(p);
+    const fling=sh.querySelector('[data-do="fling"]'); if(fling)fling.onclick=()=>doFling(p);
+    const hist=sh.querySelector('[data-do="history"]'); if(hist)hist.onclick=()=>openPartnerHistory(p);
   });
+}
+
+function doFling(p){
+  closeSheet();
+  const sx=makeSex(); const otherName=newFirst(sx)+' '+pick(LAST);
+  p.stats.happy=clamp(p.stats.happy+6);
+  // chance of a child depends on age, lower than a committed couple
+  const fertile = p.age<=47;
+  if(fertile && chance(p.age<35?22:p.age<42?12:5)){
+    const child=makeChild(p,{fling:true, otherParent:otherName});
+    p.partnerHistory.push({id:nid(), name:otherName, sex:sx, from:G.year, to:G.year, status:'Fling', kids:1});
+    log(`${p.first} had a fling with ${otherName.split(' ')[0]} — and months later, a surprise: a child, ${child.first}.`,'birth');
+  } else {
+    p.partnerHistory.push({id:nid(), name:otherName, sex:sx, from:G.year, to:G.year, status:'Fling', kids:0});
+    log(`${p.first} had a brief fling with ${otherName.split(' ')[0]}. No strings.`,'good');
+  }
+  render();
+}
+
+function openPartnerHistory(p){
+  closeSheet();
+  let html=`<div class="grab"></div><h3>${p.first}'s past loves</h3><p class="hint">Everyone who left a mark.</p>`;
+  const icon={'Spouse':'❤️','Partner':'💕','Ex-spouse':'💔','Late spouse':'🕯','Fling':'🔥'};
+  // include current spouse/partner from rels too
+  const current=p.rels.filter(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
+  current.forEach(r=>{
+    html+=`<div class="rel"><div class="av">${icon[r.kind]||'💕'}</div>
+      <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind==='Spouse'?'Married — current':'Together now'}</div></div></div>`;
+  });
+  [...p.partnerHistory].reverse().forEach(h=>{
+    const span = h.to&&h.to!==h.from ? `${h.from}–${h.to}` : `${h.from}`;
+    const kidStr = h.kids? ` · ${h.kids} child${h.kids>1?'ren':''}` : '';
+    html+=`<div class="rel"><div class="av">${icon[h.status]||'💔'}</div>
+      <div class="rinfo"><div class="rn">${h.name}</div><div class="rd">${h.status} · ${span}${kidStr}</div></div></div>`;
+  });
+  if(!current.length && !p.partnerHistory.length) html+=`<p class="hint">No history yet.</p>`;
+  sheet(html);
 }
 function relEmoji(r){
   if(r.kind==='Spouse'||r.kind==='Partner')return '❤️';
@@ -1391,12 +1565,20 @@ function doDate(p){
   p.rels.push(partner); p.stats.happy=clamp(p.stats.happy+8);
   log(`${p.first} started seeing ${partner.name.split(' ')[0]}.`,'good'); render();
 }
+function recordPartner(p, rel, status, kids){
+  // find existing history entry for this rel id, or create one
+  let h=p.partnerHistory.find(x=>x.id===rel.id);
+  if(!h){ h={id:rel.id, name:rel.name, sex:rel.sex, from:G.year, to:null, status, kids:kids||0}; p.partnerHistory.push(h); }
+  else { h.status=status; if(status!=='Spouse'&&status!=='Partner') h.to=G.year; if(kids!=null) h.kids=kids; }
+  return h;
+}
 function doMarry(p){
   closeSheet();
   const partner=p.rels.find(r=>r.kind==='Partner'&&r.alive);
   if(!partner)return;
   if(partner.bond<40 && chance(60)){ log(`${p.first} proposed. ${partner.name.split(' ')[0]} said no.`,'bad'); partner.bond=clamp(partner.bond-15); render(); return; }
   partner.kind='Spouse'; partner.bond=clamp(partner.bond+15); p.married=true; p.partnerName=partner.name;
+  recordPartner(p, partner, 'Spouse');
   const cost=4000+rnd(20000); p.money-=Math.min(p.money,cost);
   p.stats.happy=clamp(p.stats.happy+14);
   log(`${p.first} married ${partner.name.split(' ')[0]}. A good day.`,'big'); render();
@@ -1413,9 +1595,12 @@ function makeChild(p, opts={}){
     if(p.traits.length) child.traits=[pick(p.traits), pick(TRAITS).k].filter((v,i,a)=>a.indexOf(v)===i);
   }
   child.adopted=!!opts.adopted;
+  child.fromFling=!!opts.fling;
+  if(opts.otherParent) child.otherParent=opts.otherParent;
   G.people.push(child);
   p.childrenIds.push(child.id);
-  p.rels.push({name:child.first+' '+child.last,kind:'Child',sex:csx,bond:opts.adopted?70:80,alive:true,id:child.id});
+  const kindLabel = opts.fling ? 'Child (out of wedlock)' : 'Child';
+  p.rels.push({name:child.first+' '+child.last,kind:'Child',sex:csx,bond:opts.adopted?70:opts.fling?60:80,alive:true,id:child.id, note:opts.fling?'born from a fling':null});
   return child;
 }
 function doBaby(p, ivf){
@@ -1620,7 +1805,11 @@ function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base
       moviestar:`${p.first} landed their first gig as a background extra. Hollywood, someday.`,
       tech:`${p.first} took a help desk job. Everyone starts somewhere.`,
       boxer:`${p.first} laced up as an amateur boxer.`,
-      director:`${p.first} graduated film school, reel in hand and dreams bigger.`}[c.k]
+      director:`${p.first} graduated film school, reel in hand and dreams bigger.`,
+      popstar:`${p.first} played their first open mic to a half-empty room. It begins.`,
+      restaurateur:`${p.first} started as a line cook, burning their hands and learning fast.`,
+      esports:`${p.first} started grinding ranked ladders into the night.`,
+      astronaut:`${p.first} was accepted into the astronaut candidate program. The stars await.`}[c.k]
       || `${p.first} began the long climb in ${c.l.toLowerCase()}.`;
     log(intro+headstart,'big'); render(); return;
   }
@@ -1808,6 +1997,7 @@ function openSelf(){
     Purse: <b style="color:var(--gold)">${money(p.money)}</b>${p.salary?` · earning ${money(p.salary)}/yr`:''}<br>
     Net worth: <b style="color:var(--gold)">${money(netWorth)}</b> · ${p.insured?'Insured ✅':'Uninsured ⚠️'}<br>
     ${p.married?'Married':'Single'} · ${p.childrenIds.length} child${p.childrenIds.length===1?'':'ren'} · Generation ${p.gen}
+    ${(p.partnerHistory&&p.partnerHistory.filter(h=>h.status==='Ex-spouse').length)?`<br>${p.partnerHistory.filter(h=>h.status==='Ex-spouse').length} ex-spouse(s) · ${p.partnerHistory.filter(h=>h.status==='Fling').length} past fling(s)`:''}
     ${p.onSocial?`<br>${p.socialFollowers.toLocaleString()} social followers`:''}
     ${p.record.length?`<br>Record: ${p.record.join(', ')}`:''}
     ${p.inPrison?`<br><span style="color:var(--blood)">In prison — ${p.prisonYears} year(s) left</span>`:''}
