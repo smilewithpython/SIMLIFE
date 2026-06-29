@@ -2034,6 +2034,74 @@ const CHOICE_EVENTS = [
       {label:'Retire', sub:'+joy, -income', effect:p=>{ fx(p,{happy:12,stress:-20}); endJob(p,`${p.first} retired after a long career.`); return `${p.first} hung it up. Time is the new luxury.`;}},
       {label:'Keep working', sub:'+income', effect:p=>{fx(p,{stress:6}); return `${p.first} isn't done yet.`;}},
     ]},
+  // ---------- OLD AGE & LEGACY ----------
+  { id:'write_will', emoji:'📜', title:'Putting affairs in order', once:true,
+    when:p=>p.age>=60, weight:2.5,
+    body:p=>`${p.first} sits down to think about a will. Who should inherit what they've built?`,
+    choices:[
+      {label:'Split it evenly among the children', sub:'fair', need:p=>p.childrenIds.length>0, effect:p=>{ setFlag(p,'willEvenSplit'); fx(p,{happy:4}); return `${p.first} drew up a fair will. The family is provided for, equally.`;}},
+      {label:'Leave it to your favorite', sub:'-family harmony', need:p=>p.childrenIds.length>0, effect:p=>{ setFlag(p,'willFavorite'); const kids=p.childrenIds.map(id=>findP(G,id)).filter(Boolean); const fav=kids[0]; if(fav){const rc=p.rels.find(r=>r.id===fav.id); } return `${p.first} favored one child in the will. It may cause friction later.`;}},
+      {label:'Leave it all to charity', sub:'+legacy', effect:p=>{ setFlag(p,'willCharity'); setFlag(p,'philanthropist'); fx(p,{happy:8}); return `${p.first} decided their fortune would do good in the world after they're gone.`;}},
+      {label:'Don\'t think about it yet', sub:'avoid it', effect:p=>{ fx(p,{happy:-2}); return `${p.first} pushed the thought away. There's still time… probably.`;}},
+    ]},
+  { id:'grandkids', emoji:'👵', title:'Grandchildren', 
+    when:p=>p.age>=58&&p.childrenIds.some(id=>{const k=findP(G,id);return k&&(k.childrenIds||[]).length>0;}), weight:2.5,
+    body:p=>`${p.first}'s grandchildren are growing up fast. How present will they be in their lives?`,
+    choices:[
+      {label:'Be the doting grandparent', sub:'+joy, +bonds', effect:p=>{ fx(p,{happy:14,health:3}); setFlag(p,'belovedElder'); p.rels.filter(r=>r.alive&&r.kind==='Child').forEach(r=>r.bond=clamp(r.bond+6)); return `${p.first} spoiled the grandkids rotten and loved every second. The family adores them.`;}},
+      {label:'Pass down wisdom and stories', sub:'+legacy', effect:p=>{ fx(p,{happy:10,smarts:2}); setFlag(p,'familyHistorian'); return `${p.first} became the keeper of family stories. The grandkids will carry them forever.`;}},
+      {label:'Spoil them with money', sub:'-$, +joy', effect:p=>{ const give=Math.min(p.money,Math.round(p.money*0.05)+5000); fx(p,{money:-give,happy:8}); return `${p.first} set up funds for the grandkids' futures. ${money(give)} toward their dreams.`;}},
+      {label:'Keep your distance', sub:'-bonds', effect:p=>{ fx(p,{happy:-4}); return `${p.first} stayed at arm's length. A choice they may come to regret.`;}},
+    ]},
+  { id:'memoir', emoji:'📖', title:'A life worth telling', once:true,
+    when:p=>p.age>=62&&(p.stats.fame>25||p.stats.smarts>60||p.record.length>0), weight:2,
+    body:p=>`A publisher suggests ${p.first} write a memoir. Their life has been quite a story.`,
+    choices:[
+      {label:'Write the whole truth', sub:'+legacy, +$', effect:p=>{ const r=10000+rnd(300000)+(p.stats.fame*2000); fx(p,{money:r,fame:8,happy:6}); setFlag(p,'wroteMemoir'); return `${p.first}'s honest memoir moved readers and sold well — ${money(r)}.`;}},
+      {label:'Write a flattering version', sub:'+fame', effect:p=>{ fx(p,{fame:10}); setFlag(p,'wroteMemoir'); return `${p.first} polished the rough edges off their story. A bestseller, if not the truth.`;}},
+      {label:'Keep your story private', sub:'+peace', effect:p=>{ fx(p,{happy:4}); return `${p.first} decided some stories are just for those who lived them.`;}},
+    ]},
+  { id:'bucket_list', emoji:'🎈', title:'The bucket list', once:true,
+    when:p=>p.age>=60&&p.job==='none', weight:2.2,
+    body:p=>`Retirement stretches out ahead. ${capFirst(p.first)} has a list of things they always wanted to do.`,
+    choices:[
+      {label:'Travel the world', sub:'-$, +joy', effect:p=>{ const cost=Math.min(p.money,Math.round(p.money*0.1)+10000); fx(p,{money:-cost,happy:18,health:3}); setFlag(p,'worldTraveler'); return `${p.first} finally saw the world — the pyramids, the northern lights, all of it.`;}},
+      {label:'Pick up a wild new hobby', sub:'+joy', effect:p=>{ fx(p,{happy:12,health:4}); if(chance(30))addTrait(p,'creative'); return `${p.first} took up something they'd always dreamed of — and felt young again.`;}},
+      {label:'Reconnect with old friends', sub:'+bonds', effect:p=>{ fx(p,{happy:10}); if(chance(40)){const f=addFriend(p);return `${p.first} tracked down old friends and made a new one too, ${f.name.split(' ')[0]}.`;} return `${p.first} rebuilt bridges to people they'd lost touch with.`;}},
+      {label:'Simply rest', sub:'+health', effect:p=>{ fx(p,{health:8,happy:6,stress:-20}); return `${p.first} embraced a slow, peaceful retirement. Sometimes that's the dream.`;}},
+    ]},
+  { id:'health_decline', emoji:'💊', title:'The body slows down', 
+    when:p=>p.age>=68&&p.stats.health<55, weight:2.2,
+    body:p=>`${p.first}'s health is fading with age. Decisions about how to spend these years matter now.`,
+    choices:[
+      {label:'Pursue every treatment', sub:'-$, +time', effect:p=>{ const cost=Math.min(p.money,30000); fx(p,{money:-cost,health:12}); return `${p.first} fought hard for more good years, sparing no expense.`;}},
+      {label:'Focus on comfort and family', sub:'+joy, +peace', effect:p=>{ fx(p,{happy:12,stress:-15,health:3}); setFlag(p,'gracefulAging'); p.rels.filter(r=>r.alive).forEach(r=>r.bond=clamp(r.bond+4)); return `${p.first} chose to savor the time they have, surrounded by loved ones.`;}},
+      {label:'Carry on as if nothing\'s wrong', sub:'risky', effect:p=>{ fx(p,{happy:4,health:-6}); return `${p.first} refused to slow down. Defiant to the last.`;}},
+    ]},
+  { id:'lifetime_award', emoji:'🏅', title:'A lifetime of work honored', once:true,
+    when:p=>p.age>=65&&(p.stats.fame>45||hasFlag(p,'nobelLaureate')||hasFlag(p,'oscarWinner')||p.livesSaved>100), weight:2,
+    body:p=>`${p.first} is to receive a lifetime achievement award for all they accomplished.`,
+    choices:[
+      {label:'Give a gracious speech', sub:'+legacy', effect:p=>{ fx(p,{fame:10,happy:14}); setFlag(p,'lifetimeAward'); worldEvent(p,`${p.first} received a lifetime achievement award, honored by all.`,{hope:true}); return `${p.first} accepted with grace and humility. A capstone on a remarkable life.`;}},
+      {label:'Use the spotlight for a cause', sub:'+legacy, +good', effect:p=>{ fx(p,{fame:8,happy:10}); setFlag(p,'lifetimeAward'); setFlag(p,'philanthropist'); return `${p.first} turned their moment into a rallying cry for something bigger than themselves.`;}},
+      {label:'Decline the honor humbly', sub:'+character', effect:p=>{ fx(p,{happy:8}); return `${p.first} quietly declined, saying the work was its own reward.`;}},
+    ]},
+  { id:'final_reconciliation', emoji:'🤍', title:'Mending what\'s left', once:true,
+    when:p=>p.age>=70&&p.rels.some(r=>r.alive&&r.bond<40), weight:2,
+    body:p=>`In the twilight, ${p.first} feels the weight of an unresolved relationship. Time is short now.`,
+    choices:[
+      {label:'Reach out and make amends', sub:'+deep peace', effect:p=>{ const r=p.rels.filter(x=>x.alive&&x.bond<40).sort((a,b)=>a.bond-b.bond)[0]; if(r)r.bond=clamp(r.bond+50); fx(p,{happy:18,stress:-20}); setFlag(p,'foundPeace'); return `${p.first} made peace before it was too late. A weight lifted from the soul.`;}},
+      {label:'Write a letter to be read later', sub:'+bittersweet', effect:p=>{ fx(p,{happy:6}); setFlag(p,'leftLetters'); return `${p.first} put their feelings in a letter, to be opened when they're gone.`;}},
+      {label:'Let it remain unspoken', sub:'-peace', effect:p=>{ fx(p,{happy:-6}); return `${p.first} never found the words. Some regrets we carry to the end.`;}},
+    ]},
+  { id:'pass_torch', emoji:'🔥', title:'Passing the torch', once:true,
+    when:p=>p.age>=63&&(p.businesses&&p.businesses.length>0||p.stats.fame>40)&&p.childrenIds.length>0, weight:1.8,
+    body:p=>`${p.first} has built something meaningful. Now there's the question of who carries it forward.`,
+    choices:[
+      {label:'Groom a child to take over', sub:'+legacy', effect:p=>{ const kid=p.childrenIds.map(id=>findP(G,id)).filter(Boolean)[0]; if(kid){ kid.money+=Math.round((p.money||0)*0.1); kid.stats.smarts=clamp(kid.stats.smarts+5); } setFlag(p,'dynastyBuilder'); fx(p,{happy:10}); return `${p.first} began preparing ${kid?kid.first:'their heir'} to inherit the empire. A dynasty in the making.`;}},
+      {label:'Sell it all and enjoy retirement', sub:'+$', effect:p=>{ let total=0; (p.businesses||[]).forEach(b=>total+=b.value||0); p.money+=total; p.businesses=[]; fx(p,{happy:8}); return `${p.first} cashed out everything — ${money(total)} — to enjoy their final chapter freely.`;}},
+      {label:'Hand it to a trusted protégé', sub:'+legacy', effect:p=>{ fx(p,{happy:8}); setFlag(p,'mentor'); return `${p.first} entrusted their life's work to someone who'd earned it. Blood isn't everything.`;}},
+    ]},
   { id:'reconcile', emoji:'🕊', title:'An old rift', once:true,
     when:p=>p.age>=55&&p.rels.some(r=>r.alive&&r.bond<35), weight:2,
     body:p=>`${p.first} has drifted bitterly from someone they once loved. There's a chance to reach out.`,
@@ -2482,6 +2550,73 @@ const CHOICE_EVENTS = [
     choices:[
       {label:'Buy in', sub:'probably a pyramid', effect:p=>{ const cost=Math.min(p.money,2000); fx(p,{money:-cost}); if(chance(20)){ const ret=cost*2; fx(p,{money:ret,happy:4}); return `Against the odds, ${p.first} actually made a little — ${money(ret)}.`;} fx(p,{happy:-6}); return `It was a pyramid scheme. ${p.first}'s ${money(cost)} evaporated.`;}},
       {label:'See through the pitch', sub:'+smarts', effect:p=>{ fx(p,{smarts:3}); return `${p.first} recognized the scheme and shut the door, smiling.`;}},
+    ]},
+  { id:'open_audition', emoji:'🎙', title:'An open-mic challenge', 
+    when:p=>p.age>=16&&p.age<=55&&(p.stats.charming>62||hasFlag(p,'musical')), weight:1.5,
+    body:p=>`A bar's open-mic night has a cash prize. The crowd is rowdy. ${capFirst(p.first)} could take the stage.`,
+    choices:[
+      {label:'Get up and perform', sub:'brave, +joy', effect:p=>{ if(p.stats.charming>60||hasFlag(p,'musical')||chance(45)){ const prize=50+rnd(400); fx(p,{money:prize,happy:10,fame:3}); if(chance(20))setFlag(p,'streetDiscovered'); return `${p.first} brought the house down and won ${money(prize)}.`;} fx(p,{happy:-4}); return `${p.first} bombed, but survived the heckling. Character-building.`;}},
+      {label:'Cheer from the crowd', sub:'+joy', effect:p=>{ fx(p,{happy:4}); return `${p.first} had a great night watching others brave the stage.`;}},
+    ]},
+  { id:'reunion_invite', emoji:'🎓', title:'A class reunion', once:true,
+    when:p=>p.age>=28&&p.age<=60, weight:1.4,
+    body:p=>`${p.first}'s school reunion is this weekend. Old faces, old feelings, old rivalries.`,
+    choices:[
+      {label:'Show up and shine', sub:'depends on your life', effect:p=>{ const success = p.stats.fame>30 || p.money>500000 || p.stats.looks>65; if(success){ fx(p,{happy:10,fame:2}); return `${p.first} walked in looking like a success story. Heads turned.`;} fx(p,{happy:-2}); return `${p.first} felt a pang comparing lives, but found some real warmth too.`;}},
+      {label:'Reconnect with an old flame', sub:'romance?', effect:p=>{ if(!p.married&&chance(50)){ const sx=partnerSex(p); p.rels.push({name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:55+rnd(20),alive:true,id:nid()}); fx(p,{happy:12}); return `${p.first} rekindled something with an old flame. The years melted away.`;} fx(p,{happy:5}); return `${p.first} caught up with an old crush. Sweet, but the moment had passed.`;}},
+      {label:'Skip it', sub:'nothing', effect:p=>{ fx(p,{happy:-1}); return `${p.first} decided the past could stay in the past.`;}},
+    ]},
+  { id:'wrong_place', emoji:'🚨', title:'Wrong place, wrong time', 
+    when:p=>p.age>=16&&p.age<=60, weight:1.3,
+    body:p=>`${p.first} is near a store when it gets robbed. In the chaos, police are detaining everyone nearby.`,
+    choices:[
+      {label:'Stay calm and cooperate', sub:'+smarts', effect:p=>{ if(p.stats.smarts>50||chance(70)){ fx(p,{happy:-2}); return `${p.first} kept cool, answered questions, and was released. A scary hour.`;} fx(p,{happy:-6}); p.record.push('Wrongful detainment'); return `A mix-up landed ${p.first} in a cell overnight before it cleared up.`;}},
+      {label:'Try to slip away', sub:'risky', effect:p=>{ if(chance(40)){ fx(p,{happy:2}); return `${p.first} quietly melted into the crowd and got clear.`;} fx(p,{happy:-8}); p.record.push('Resisting (dismissed)'); return `Running looked suspicious. ${p.first} got tackled and questioned hard.`;}},
+      {label:'Help police describe the robber', sub:'+civic good', effect:p=>{ fx(p,{happy:4}); setFlag(p,'goodHeart'); if(chance(20))fx(p,{fame:3}); return `${p.first}'s sharp memory helped catch the robber. A quiet good deed.`;}},
+    ]},
+  { id:'inheritance_stranger', emoji:'✉️', title:'A letter from a lawyer', once:true,
+    when:p=>p.age>=25, weight:1.2,
+    body:p=>`A law firm writes: a distant relative ${p.first} barely knew has passed and left them something.`,
+    choices:[
+      {label:'Claim the inheritance', sub:'mystery prize', effect:p=>{ const r=rnd(100); if(r<50){ const sum=5000+rnd(80000); fx(p,{money:sum,happy:6}); return `${p.first} inherited ${money(sum)}. An unexpected gift.`;} if(r<80){ fx(p,{happy:4}); return `It was a box of old keepsakes — no money, but oddly moving.`;} const debt=Math.min(p.money,5000+rnd(15000)); fx(p,{money:-debt,happy:-4}); return `Turns out the relative left behind debts. ${p.first} cleared ${money(debt)} of them out of duty.`;}},
+      {label:'Decline it all', sub:'no strings', effect:p=>{ return `${p.first} let it go, wanting no part of a stranger's affairs.`;}},
+    ]},
+  { id:'street_artist', emoji:'🎨', title:'A portrait on the spot', 
+    when:p=>p.age>=12, weight:1.2,
+    body:p=>`A street artist offers to sketch ${p.first}'s portrait for a small fee.`,
+    choices:[
+      {label:'Sit for the portrait', sub:'+joy', effect:p=>{ const cost=Math.min(p.money,40); fx(p,{money:-cost,happy:6}); if(p.stats.looks>70&&chance(30)){ fx(p,{fame:2}); return `The artist was so struck by ${p.first}'s face they displayed the portrait. A tiny brush with fame.`;} return `${p.first} got a charming keepsake of this moment in their life.`;}},
+      {label:'Admire others\' work instead', sub:'+culture', effect:p=>{ fx(p,{smarts:1,happy:2}); return `${p.first} browsed the gallery on the railings and felt inspired.`;}},
+    ]},
+  { id:'gym_challenge', emoji:'🏋️', title:'A challenge at the gym', 
+    when:p=>p.age>=16&&p.age<=55&&p.stats.athletic>55, weight:1.4,
+    body:p=>`A cocky regular challenges ${p.first} to a feat of strength in front of a crowd.`,
+    choices:[
+      {label:'Take the challenge', sub:'pride on the line', effect:p=>{ if(p.stats.athletic>65||chance(45)){ fx(p,{athletic:3,happy:8,fame:2}); return `${p.first} crushed it and earned the gym's respect.`;} fx(p,{health:-6,happy:-4}); return `${p.first} pulled something and limped off, ego bruised.`;}},
+      {label:'Laugh it off', sub:'+chill', effect:p=>{ fx(p,{happy:2}); return `${p.first} declined with a grin. Nothing to prove.`;}},
+    ]},
+  { id:'whirlwind_trip', emoji:'🏖', title:'A spontaneous invitation', 
+    when:p=>p.age>=18&&p.age<=60&&p.money>=3000, weight:1.3,
+    body:p=>`Friends are leaving for a spur-of-the-moment weekend getaway and there's one seat left for ${p.first}.`,
+    choices:[
+      {label:'Drop everything and go', sub:'-$, +joy', effect:p=>{ const cost=Math.min(p.money,2000); fx(p,{money:-cost,happy:16,health:4,stress:-15}); if(chance(20)){const f=addFriend(p);return `An unforgettable trip — ${p.first} even came home with a new friend, ${f.name.split(' ')[0]}.`;} return `${p.first} said yes to adventure and came back glowing.`;}},
+      {label:'Too responsible for that', sub:'+money', effect:p=>{ fx(p,{happy:-3,smarts:1}); return `${p.first} stayed behind to handle responsibilities. Sensible, if a little sad.`;}},
+    ]},
+  { id:'viral_blame', emoji:'📹', title:'Caught on camera', 
+    when:p=>p.age>=16&&p.age<=60, weight:1.2,
+    body:p=>`A stranger films a tense public moment ${p.first} is caught up in, and it starts spreading online — out of context.`,
+    choices:[
+      {label:'Tell your side publicly', sub:'risky', effect:p=>{ if(p.stats.charming>55||chance(45)){ fx(p,{fame:6,happy:2}); return `${p.first}'s honest response won people over. The narrative flipped.`;} fx(p,{fame:-4,happy:-6}); return `Speaking up only poured fuel on the fire. Brutal week online.`;}},
+      {label:'Stay silent and wait it out', sub:'+patience', effect:p=>{ fx(p,{happy:-3}); return `${p.first} weathered the storm quietly. In a week, the internet forgot.`;}},
+      {label:'Lawyer up', sub:'-$, +control', effect:p=>{ const cost=Math.min(p.money,8000); fx(p,{money:-cost}); fx(p,{happy:2}); return `${p.first}'s lawyer got the worst clips taken down. Money well spent.`;}},
+    ]},
+  { id:'street_preacher', emoji:'🕊', title:'A moment of meaning', 
+    when:p=>p.age>=16, weight:1.1,
+    body:p=>`A calm street preacher catches ${p.first}'s eye and asks a simple question: are you happy with your life?`,
+    choices:[
+      {label:'Reflect honestly', sub:'+perspective', effect:p=>{ fx(p,{happy:5,smarts:2,stress:-8}); return `${p.first} took a quiet moment to think about what really matters. Centering.`;}},
+      {label:'Debate them', sub:'+smarts', effect:p=>{ fx(p,{smarts:3}); if(chance(40))return `A surprisingly thoughtful exchange. ${p.first} walked away challenged.`; return `${p.first} sparred over ideas and enjoyed the mental workout.`;}},
+      {label:'Keep walking', sub:'nothing', effect:p=>{ return `${p.first} nodded politely and moved on.`;}},
     ]},
   // ========== MORE GENERAL ADULT EVENTS ==========
   { id:'midlife_crisis', emoji:'🏍', title:'A midlife crisis', once:true,
@@ -3294,6 +3429,15 @@ function lifeSummary(p){
   if(p.prisonRole==='shotcaller') items.push('Ran a prison from the inside');
   if((p.businesses||[]).length) items.push(`Owned ${p.businesses.length} business${p.businesses.length===1?'':'es'}`);
   if(hasFlag(p,'philanthropist')) items.push('Gave generously to those in need');
+  if(hasFlag(p,'lifetimeAward')) items.push('Received a lifetime achievement award');
+  if(hasFlag(p,'wroteMemoir')) items.push('Wrote a memoir of their life');
+  if(hasFlag(p,'worldTraveler')) items.push('Traveled the world in retirement');
+  if(hasFlag(p,'belovedElder')||hasFlag(p,'familyHistorian')) items.push('A beloved grandparent');
+  if(hasFlag(p,'dynastyBuilder')) items.push('Built a family dynasty');
+  if(hasFlag(p,'foundPeace')) items.push('Made peace before the end');
+  if(hasFlag(p,'olympiadChamp')) items.push('Won an academic olympiad');
+  if(hasFlag(p,'nobelLaureate')) items.push('Nobel laureate');
+  if(hasFlag(p,'oscarWinner')) items.push('Academy Award winner');
   if(hasFlag(p,'whistleblower')) items.push('Blew the whistle on corruption');
   if(hasFlag(p,'corrupt')||hasFlag(p,'taxCheat')||hasFlag(p,'fraudster')) items.push('Bent the rules for personal gain');
   if(p.record && p.record.length) items.push(`Criminal record: ${[...new Set(p.record)].slice(0,3).join(', ')}`);
@@ -4082,7 +4226,53 @@ const CAREER_CHOICES = {
     O('💼','Go private / freelance','+$$, no safety net',0,()=>{ closeSheet(); const fee=100000+rnd(2000000); p.money+=fee; p.stats.fame=clamp(p.stats.fame+4); log(`${p.first} took a lucrative private contract — ${money(fee)}.`,'good'); render(); }),
     O('🔓','Consider going rogue','dangerous path',0,()=>{ closeSheet(); if(chance(45)){ const score=1000000+rnd(10000000); p.money+=score; setFlag(p,'rogueAgent'); p.heat=(p.heat||0)+30; log(`${p.first} sold secrets and vanished with ${money(score)}. A wanted traitor now.`,'bad'); } else { p.inPrison=true; p.prisonYears=5+rnd(10); p.record.push('Treason'); endJob(p); log(`${p.first} was caught betraying the agency. Treason.`,'death'); } render(); }),
   ],
+  nurse: (p)=>[
+    O('🎓','Specialize (ICU, surgery)','+salary',0,()=>{ closeSheet(); p.salary=Math.round(p.salary*1.3); p.stats.smarts=clamp(p.stats.smarts+4); setFlag(p,'specializedNurse'); log(`${p.first} earned a specialty certification. The pay and respect grew.`,'big'); render(); }),
+    O('💗','Go above and beyond for a patient','+joy',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+8); setFlag(p,'goodHeart'); log(`${p.first} sat with a frightened patient long past their shift. This is why they do it.`,'good'); render(); }),
+    O('🩺','Pick up overtime shifts','+$, −health',0,()=>{ closeSheet(); const bonus=Math.round(p.salary*0.15); p.money+=bonus; p.stats.health=clamp(p.stats.health-5); p.stress=clamp((p.stress||0)+10); log(`${p.first} worked grueling overtime — ${money(bonus)} extra, but exhausted.`,'muted'); render(); }),
+    O('📋','Train toward nurse practitioner','career leap',0,()=>{ closeSheet(); if(p.stats.smarts>60&&chance(50)){ p.jobTitle='Nurse Practitioner'; p.salary=Math.round(p.salary*1.5); log(`${p.first} became a Nurse Practitioner — nearly a doctor's role.`,'big'); } else log(`${p.first} is still working toward the NP credential.`,'muted'); render(); }),
+  ],
+  teacher: (p)=>[
+    O('🍎','Inspire a struggling student','+joy, +legacy',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+8); setFlag(p,'belovedTeacher'); log(`${p.first} reached a kid everyone had given up on. Teaching at its finest.`,'good'); render(); }),
+    O('📚','Pursue a master\'s & pay bump','+salary',0,()=>{ closeSheet(); const cost=Math.min(p.money,15000); p.money-=cost; p.salary=Math.round(p.salary*1.2); p.stats.smarts=clamp(p.stats.smarts+4); log(`${p.first} earned a master's degree and bumped up the pay scale.`,'good'); render(); }),
+    O('🏫','Become department head / principal','+power',0,()=>{ closeSheet(); const odds=35+(p.jobYears>6?25:0); if(chance(odds)){ p.jobTitle='Principal'; p.salary=Math.round(p.salary*1.4); log(`${p.first} was promoted to Principal. Leading the whole school now.`,'big'); } else log(`${p.first} was passed over for the administrative role.`,'muted'); render(); }),
+    O('☀️','Tutor or work over the summer','+$',0,()=>{ closeSheet(); const extra=3000+rnd(8000); p.money+=extra; log(`${p.first} tutored through the summer for ${money(extra)} extra.`,'good'); render(); }),
+  ],
+  engineer: (p)=>[
+    O('💡','File a patent','+$$, +prestige',0,()=>{ closeSheet(); if(p.stats.smarts>60&&chance(45)){ const royalty=50000+rnd(2000000); p.money+=royalty; p.stats.fame=clamp(p.stats.fame+5); setFlag(p,'patentHolder'); log(`${p.first}'s invention got patented and licensed — ${money(royalty)}.`,'big'); } else log(`${p.first}'s patent application is still under review.`,'muted'); render(); }),
+    O('🚀','Lead a flagship project','+salary, +stress',0,()=>{ closeSheet(); if(chance(60)){ p.salary=Math.round(p.salary*1.25); p.stats.fame=clamp(p.stats.fame+3); log(`${p.first} delivered a high-profile project. A raise and a reputation.`,'good'); } else { p.stress=clamp((p.stress||0)+12); log(`The project slipped and the stress piled on. ${p.first} is fried.`,'bad'); } render(); }),
+    O('👔','Move into management','+salary',0,()=>{ closeSheet(); const odds=40+(p.jobYears>5?20:0); if(chance(odds)){ p.jobTitle='Engineering Manager'; p.salary=Math.round(p.salary*1.3); log(`${p.first} moved into engineering management.`,'big'); } else log(`${p.first} stayed on the technical track for now.`,'muted'); render(); }),
+    O('🌙','Build a side project','maybe a windfall',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+3); if(chance(18)){ const exit=80000+rnd(2000000); p.money+=exit; log(`${p.first}'s side project found buyers — ${money(exit)}!`,'big'); } else log(`${p.first} tinkered on a side build. Good practice, if nothing else.`,'good'); render(); }),
+  ],
+  accountant: (p)=>[
+    O('📊','Become a CPA','+salary, +prestige',0,()=>{ closeSheet(); if(p.stats.smarts>55&&chance(60)){ p.jobTitle='CPA'; p.salary=Math.round(p.salary*1.3); setFlag(p,'cpa'); log(`${p.first} passed the CPA exam. A serious credential.`,'big'); } else log(`${p.first} is still grinding through the CPA exams.`,'muted'); render(); }),
+    O('🏦','Start your own practice','+$$, risk',0,()=>{ closeSheet(); if(hasFlag(p,'cpa')||chance(40)){ p.salary=Math.round(p.salary*1.5); setFlag(p,'ownPractice'); log(`${p.first} hung out their own shingle. Their own boss now.`,'big'); } else log(`${p.first} decided the timing wasn't right to go solo.`,'muted'); render(); }),
+    O('🧾','Cook the books for a client','+$, very risky',0,()=>{ closeSheet(); if(chance(30)){ p.record.push('Accounting fraud'); p.stats.fame=clamp(p.stats.fame-10); if(chance(40)){p.inPrison=true;p.prisonYears=2+rnd(4);endJob(p);} log(`${p.first} got caught in a fraud investigation. Career over.`,'bad'); } else { const kick=30000+rnd(200000); p.money+=kick; setFlag(p,'corrupt'); log(`${p.first} fudged the numbers for a wealthy client — ${money(kick)} under the table.`,'muted'); } render(); }),
+    O('💼','Specialize in high-net-worth clients','+salary',0,()=>{ closeSheet(); p.salary=Math.round(p.salary*1.2); log(`${p.first} built a book of wealthy clients. Steady, lucrative work.`,'good'); render(); }),
+  ],
+  realtor: (p)=>[
+    O('🏡','Chase a luxury listing','big commission',0,()=>{ closeSheet(); if(p.stats.charming>55||chance(45)){ const comm=20000+rnd(400000); p.money+=comm; p.stats.fame=clamp(p.stats.fame+4); log(`${p.first} closed a luxury sale — ${money(comm)} commission.`,'big'); } else log(`The deal fell through at the last minute. Heartbreaking.`,'muted'); render(); }),
+    O('📣','Build your personal brand','+future deals',0,()=>{ closeSheet(); if(!p.onSocial){p.onSocial=true;p.socialFollowers=0;} p.socialFollowers+=rnd(8000); p.stats.fame=clamp(p.stats.fame+3); setFlag(p,'brandedRealtor'); log(`${p.first} put their face on benches and billboards. Leads are coming in.`,'good'); render(); }),
+    O('🏘','Invest in a rental property','passive income',0,()=>{ closeSheet(); const cost=Math.min(p.money,120000); if(p.money<120000){log(`${p.first} needs $120,000 to buy an investment property.`,'muted');render();return;} p.money-=cost; p.businesses=p.businesses||[]; p.businesses.push({name:'Rental Property',value:130000}); log(`${p.first} bought a rental, putting their expertise to work for themselves.`,'big'); render(); }),
+    O('🏢','Open your own brokerage','+$$, ambitious',0,()=>{ closeSheet(); const odds=35+(p.jobYears>5?20:0); if(chance(odds)){ p.jobTitle='Broker/Owner'; p.salary=Math.round(p.salary*1.6); log(`${p.first} opened their own brokerage with agents under them.`,'big'); } else log(`${p.first} isn't quite ready to run their own shop.`,'muted'); render(); }),
+  ],
+  pilot: (p)=>[
+    O('✈️','Upgrade to captain','+salary, +prestige',0,()=>{ closeSheet(); const odds=35+(p.jobYears>6?25:0); if(chance(odds)){ p.jobTitle='Captain'; p.salary=Math.round(p.salary*1.4); log(`${p.first} earned their fourth stripe — Captain now.`,'big'); } else log(`${p.first} is still building the hours for a captaincy.`,'muted'); render(); }),
+    O('🌍','Fly international long-haul','+$, −health',0,()=>{ closeSheet(); const bonus=Math.round(p.salary*0.2); p.money+=bonus; p.stats.health=clamp(p.stats.health-4); p.stats.happy=clamp(p.stats.happy+4); log(`${p.first} flew the prestigious long-haul routes — ${money(bonus)} more, but jet-lagged.`,'muted'); render(); }),
+    O('🛩','Handle an in-flight emergency','+rep, danger',0,()=>{ closeSheet(); if(p.stats.smarts>50||chance(70)){ p.stats.fame=clamp(p.stats.fame+8); setFlag(p,'heroPilot'); log(`${p.first} landed a crippled jet safely. Passengers owe them their lives.`,'big'); } else { p.stats.health=clamp(p.stats.health-10); log(`A rough emergency landing shook ${p.first} to the core. Everyone survived.`,'muted'); } render(); }),
+    O('🎓','Become a flight instructor','+legacy',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+5); setFlag(p,'mentor'); log(`${p.first} began training the next generation of pilots.`,'good'); render(); }),
+  ],
+  vet: (p)=>[
+    O('🐕','Open your own clinic','+$$, risk',0,()=>{ closeSheet(); const cost=Math.min(p.money,80000); if(p.money<80000){log(`${p.first} needs $80,000 to open a clinic.`,'muted');render();return;} p.money-=cost; if(chance(65)){ p.salary=Math.round(p.salary*1.4); setFlag(p,'ownClinic'); log(`${p.first} opened a thriving animal clinic. Their own practice at last.`,'big'); } else log(`The clinic struggled to attract clients at first. A tough start.`,'muted'); render(); }),
+    O('💉','Save a beloved pet against the odds','+joy, +rep',0,()=>{ closeSheet(); if(chance(70)){ p.stats.happy=clamp(p.stats.happy+8); setFlag(p,'goodHeart'); log(`${p.first} pulled off a miracle surgery. A family's best friend lived.`,'good'); } else { p.stats.happy=clamp(p.stats.happy-6); log(`Despite ${p.first}'s best efforts, they couldn't save the animal. Heartbreaking.`,'bad'); } render(); }),
+    O('🦁','Specialize in exotic animals','+niche income',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+4); p.salary=Math.round(p.salary*1.25); setFlag(p,'exoticVet'); log(`${p.first} became the go-to vet for zoos and exotic pets. A rare specialty.`,'good'); render(); }),
+    O('🐾','Volunteer at an animal shelter','+joy',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+6); setFlag(p,'goodHeart'); log(`${p.first} gave their weekends to shelter animals nobody else would help.`,'good'); render(); }),
+  ],
 };
+// everyday careers that share a choice set
+CAREER_CHOICES.analyst = CAREER_CHOICES.accountant;
+CAREER_CHOICES.corporate = CAREER_CHOICES.engineer;
+CAREER_CHOICES.chef = CAREER_CHOICES.restaurateur;
 // careers that share a choice set
 CAREER_CHOICES.judge = CAREER_CHOICES.lawyer;
 CAREER_CHOICES.musician = CAREER_CHOICES.popstar;
