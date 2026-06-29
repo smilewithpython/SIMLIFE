@@ -53,7 +53,7 @@ header{
 .money b{color:var(--ink); font-weight:600}
 
 /* ---------- log ---------- */
-#log{flex:1; overflow-y:auto; padding:16px 18px 8px; scroll-behavior:smooth}
+#log{flex:1; overflow-y:auto; padding:16px 18px 8px; scroll-behavior:auto}
 .entry{margin-bottom:13px; line-height:1.5; font-size:15px; animation:rise .35s ease}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .entry .yr{font-variant:small-caps; color:var(--gold-soft); font-size:12px; letter-spacing:1.5px; display:block; margin-bottom:1px}
@@ -383,6 +383,32 @@ const CAREERS=[
       {t:'Underboss',        mult:20,  years:3, req:0,  bust:20},
       {t:'Kingpin',          mult:55,  years:4, req:0,  bust:26},
     ]},
+  {k:'conductor', l:'Train Conductor', emoji:'🚆', edu:1, base:50000, grow:2000, stat:'health', ladder:['Brakeman','Conductor','Senior Conductor','Yardmaster']},
+  {k:'scientist', l:'Scientist',       emoji:'🔬', edu:3, base:85000, grow:3800, stat:'smarts', ladder:['Lab Tech','Researcher','Senior Scientist','Lab Director','Nobel Laureate']},
+  {k:'superhero', l:'Superhero', emoji:'🦸', edu:0, base:0, keyStat:'athletic', athGate:70, staged:true, danger:true, hero:true,
+    stages:[
+      {t:'Masked Vigilante', mult:0,   years:0, req:0,  fame:3},
+      {t:'Local Hero',       mult:1,   years:2, req:74, fame:10},
+      {t:'City Guardian',    mult:4,   years:3, req:80, fame:24},
+      {t:'National Icon',    mult:10,  years:3, req:86, fame:42},
+      {t:'Legendary Hero',   mult:22,  years:4, req:92, fame:65},
+    ]},
+  {k:'villain', l:'Supervillain', emoji:'🦹', edu:0, base:0, keyStat:'smarts', staged:true, danger:true, crime:true, evil:true,
+    stages:[
+      {t:'Petty Menace',     mult:1,   years:0, req:0,  bust:6},
+      {t:'Costumed Criminal',mult:4,   years:2, req:0,  bust:11},
+      {t:'Crime Syndicate',  mult:12,  years:3, req:0,  bust:15},
+      {t:'Arch-Nemesis',     mult:30,  years:3, req:0,  bust:19},
+      {t:'World Threat',     mult:70,  years:4, req:0,  bust:24},
+    ]},
+  {k:'madsci', l:'Mad Scientist', emoji:'🧪', edu:2, base:60000, keyStat:'smarts', staged:true, mad:true,
+    stages:[
+      {t:'Garage Tinkerer',  mult:1,   years:0, req:0,  fame:1},
+      {t:'Fringe Researcher',mult:2,   years:2, req:60, fame:5},
+      {t:'Renegade Genius',  mult:5,   years:3, req:72, fame:14},
+      {t:'Dimension Bender', mult:14,  years:3, req:82, fame:30},
+      {t:'Reality Architect',mult:30,  years:4, req:90, fame:55},
+    ]},
 ];
 const CAREER=k=>CAREERS.find(c=>c.k===k);
 
@@ -433,6 +459,8 @@ function blankPerson(opt={}){
     partnerHistory:[], // {name, sex, kind:'Spouse'|'Ex-spouse'|'Late spouse'|'Fling', from, to, kids}
     autonomous:false,  // once true, this person lives an offscreen life each year
     orientation:null,  // 'straight'|'gay'|'bi' — set at coming of age
+    citizenship:null,  // country of residence (defaults to birth country)
+    ruler:null,        // if they rule a nation: {title, country}
     rels: opt.rels ?? [],   // {name,kind,sex,bond,alive,id}
     childrenIds: [],
     parentIds: opt.parentIds ?? [],
@@ -482,6 +510,8 @@ function ensureIdc(){ if(!G.idc){ let m=0; G.people.forEach(p=>m=Math.max(m,p.id
 function migrate(){
   // backfill fields added in later versions so old saves keep working
   if(!G.hometown) G.hometown='Unknown';
+  if(!G.world) G.world=[];
+  if(!G.country) G.country=(G.hometown||'').split(', ')[1]||null;
   G.people.forEach(p=>{
     if(!p.portfolio) p.portfolio={low:0,med:0,high:0};
     if(!p.businesses) p.businesses=[];
@@ -497,6 +527,8 @@ function migrate(){
     if(p.autonomous==null) p.autonomous=false;
     if(p.orientation==null) p.orientation=null;
     if(p.lifeSentence==null) p.lifeSentence=false;
+    if(p.citizenship==null) p.citizenship=(G.country||null);
+    if(p.ruler==null) p.ruler=null;
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
@@ -587,7 +619,7 @@ function startLife(pend,sex){
   const sibs=[]; for(let i=0;i<sibCount;i++){ const ss=makeSex(); sibs.push({name:newFirst(ss)+' '+dadLast, kind:ss==='m'?'Brother':ss==='f'?'Sister':'Sibling', sex:ss, bond:40+rnd(40), alive:true, id:-(10+i)}); }
 
   const [city,country]=pend.place;
-  G = { lineage:pend.ln, gen:1, year:1995+rnd(20), idc:1, cur:1, people:[], hometown:`${city}, ${country}` };
+  G = { lineage:pend.ln, gen:1, year:1995+rnd(20), idc:1, cur:1, people:[], hometown:`${city}, ${country}`, country, world:[] };
   const p = blankPerson({
     id:1, first:pend.fn, last:pend.ln, sex, gen:1, born:G.year,
     traits:[pend.t1.k,pend.t2.k], money:0, rels:[dad,mom,...sibs], parentIds:[-1,-2]
@@ -606,6 +638,20 @@ function capFirst(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 /* ============================================================
    LOG
    ============================================================ */
+function worldEvent(p, text, flags){
+  // a deed that marks the world; persists across generations
+  if(!G.world) G.world=[];
+  G.world.push({year:G.year, by:p.first+' '+p.last, text, flags:flags||{}});
+  if(G.world.length>40) G.world=G.world.slice(-40);
+  p.stats.fame=clamp(p.stats.fame + (flags&&flags.hope?10:flags&&flags.fear?8:6));
+  log('🌍 '+text,'big');
+  // some world effects ripple to the player
+  if(flags){
+    if(flags.fear){ p.stats.happy=clamp(p.stats.happy+4); p.money+=50000+rnd(200000); }
+    if(flags.hope){ p.stats.happy=clamp(p.stats.happy+8); }
+    if(flags.clones){ p.stats.happy=clamp(p.stats.happy-4); }
+  }
+}
 function log(text,kind='good'){
   const p=me();
   const yr = p? `Age ${p.age}` : '';
@@ -620,9 +666,16 @@ function paintLog(entry){
   else div.innerHTML=`${entry.yr?`<span class="yr">${entry.yr}</span>`:''}<span class="body">${entry.t}</span>`;
   const L=$('#log'); L.appendChild(div); L.scrollTop=L.scrollHeight;
 }
-function repaintLog(){
-  const p=me(); const L=$('#log'); L.innerHTML='';
-  (p?.log||[]).slice(-60).forEach(paintLog);
+let _logShownFor=null;
+function repaintLog(force){
+  const p=me(); const L=$('#log');
+  // only rebuild the whole log when we switch to a different character (new heir),
+  // otherwise live log() appends keep it current and we avoid the scroll-through flicker
+  if(!force && _logShownFor===(p&&p.id)) { L.scrollTop=L.scrollHeight; return; }
+  _logShownFor = p && p.id;
+  L.innerHTML='';
+  (p?.log||[]).slice(-80).forEach(paintLog);
+  L.scrollTop=L.scrollHeight;
 }
 
 /* ============================================================
@@ -902,13 +955,20 @@ function runJob(p){
     p._stageYears++;
     const st=stages[p._stage];
 
-    // ----- ORGANIZED CRIME: bust risk, advancement by years+sly, prison on capture -----
+    // ----- ORGANIZED CRIME / VILLAIN: bust risk, advancement by years, prison on capture -----
     if(c.crime){
-      // pay scales with stage; sly trait & low heat help
-      pay=Math.round(c.base*st.mult*(0.8+Math.random()*0.5));
+      // pay scales with stage; villains (base 0) earn through heists scaled to their stage
+      const heistBase = c.base>0 ? c.base : 40000;
+      pay=Math.round(heistBase*Math.max(0.4,st.mult)*(0.8+Math.random()*0.5));
       p.salary=pay;
+      // villain world-events: persistent mark on the world
+      if(c.evil && p._stage>=2 && chance(20)){ worldEvent(p, pick([
+        `${p.first} held a city hostage with a doomsday device.`,
+        `${p.first}'s heist drained the national reserve.`,
+        `${p.first} unleashed chaos across the capital.`]), {fear:true}); }
       // bust chance this year, reduced by sly trait, raised by stage
       let bust=st.bust + (p.traits.includes('sly')?-4:0) - (p.traits.includes('lucky')?3:0);
+      if(c.evil) bust=Math.round(bust*0.55); // costumed villains evade capture more easily
       bust=Math.max(2,bust);
       if(chance(bust)){
         // caught — sentence scales with how deep they were
@@ -947,8 +1007,28 @@ function runJob(p){
     p.stats[key]=clamp(p.stats[key] + (p.traits.includes('driven')?1.6:1.0) + (chance(30)?1:0));
     // fame trickle by stage
     if(st.fame) p.stats.fame=clamp(p.stats.fame + st.fame*0.2 + (chance(25)?st.fame*0.1:0));
+    // SUPERHERO: fight crime (take damage), earn from endorsements at higher stages, do heroic world-events
+    if(c.hero){
+      if(chance(p._stage>=2?40:25)){ p.stats.health=clamp(p.stats.health-(6+rnd(14))); log(`${p.first} was hurt stopping a crime in progress.`,'bad'); }
+      if(p._stage>=2 && chance(18)){ worldEvent(p, pick([
+        `${p.first} saved the city from a catastrophe.`,
+        `${p.first} foiled a supervillain's scheme.`,
+        `${p.first} pulled hundreds from a collapsing bridge.`]), {hope:true}); }
+    }
+    // MAD SCIENTIST: reality-bending experiments with persistent world consequences
+    if(c.mad && p._stage>=2 && chance(22)){
+      const exp=pick([
+        {t:`${p.first} opened a portal to another dimension.`, w:{portal:true}},
+        {t:`${p.first} cloned themselves — there are two now.`, w:{clones:true}},
+        {t:`${p.first} reversed gravity over a small town for a week.`, w:{gravity:true}},
+        {t:`${p.first} invented a serum that turned pigeons sentient.`, w:{pigeons:true}},
+        {t:`${p.first} accidentally aged every clock on Earth by a year.`, w:{clocks:true}},
+      ]);
+      worldEvent(p, exp.t, exp.w);
+      if(chance(25)){ p.stats.health=clamp(p.stats.health-15); log(`The experiment backfired on ${p.first}.`,'bad'); }
+    }
     // dangerous staged careers (boxer) take damage
-    if(c.danger && chance(p._stage>=2?22:12)){ p.stats.health=clamp(p.stats.health-(8+rnd(12))); log(`${p.first} took a beating this season. Recovery will take time.`,'bad'); }
+    if(c.danger && !c.hero && chance(p._stage>=2?22:12)){ p.stats.health=clamp(p.stats.health-(8+rnd(12))); log(`${p.first} took a beating this season. Recovery will take time.`,'bad'); }
     // pay = base * stage multiplier, with a little variance
     pay=Math.round(c.base*st.mult*(0.85+Math.random()*0.4));
     p.salary=pay;
@@ -1221,7 +1301,56 @@ const CHOICE_EVENTS = [
       {label:'Make peace', sub:'+joy', effect:p=>{ const r=p.rels.filter(x=>x.alive&&x.bond<35).sort((a,b)=>a.bond-b.bond)[0]; if(r)r.bond=clamp(r.bond+40); fx(p,{happy:14}); return `${p.first} reached out. Old wounds began to heal.`;}},
       {label:'Let it lie', sub:'-joy', effect:p=>{fx(p,{happy:-6}); return `${p.first} let the silence stand. Some doors stay closed.`;}},
     ]},
+  // ---------- VILLAIN ORIGIN (no crime career needed) ----------
+  { id:'villain_origin', emoji:'⚡', title:'A turning point', once:true,
+    when:p=>p.age>=20&&p.job!=='villain'&&p.job!=='superhero'&&(p.stats.happy<35||p.stats.smarts>75)&&chance(100), weight:1.4,
+    body:p=>`After everything that's happened, something in ${p.first} has hardened. A dark path beckons — power, vengeance, a name the world will fear.`,
+    choices:[
+      {label:'Embrace the darkness', sub:'become a supervillain', effect:p=>{ takeJobSilent(p,'villain'); fx(p,{happy:6}); return `${p.first} turned their back on the world. A supervillain is born.`;}},
+      {label:'Hold onto your humanity', sub:'+joy', effect:p=>{ fx(p,{happy:12}); setFlag(p,'choseGood'); return `${p.first} chose to stay good. The darkness passed.`;}},
+    ]},
+  // ---------- VIGILANTE / HERO ORIGIN ----------
+  { id:'hero_origin', emoji:'🦸', title:'With great power…', once:true,
+    when:p=>p.age>=18&&p.job!=='superhero'&&p.job!=='villain'&&p.stats.athletic>=68, weight:1.4,
+    body:p=>`${p.first} witnessed an injustice they couldn't ignore. They have the strength to do something no one else will.`,
+    choices:[
+      {label:'Become a vigilante', sub:'don the mask', effect:p=>{ takeJobSilent(p,'superhero'); return `${p.first} put on a mask and took to the rooftops. A hero rises.`;}},
+      {label:'Call the police instead', sub:'+safety', effect:p=>{ fx(p,{happy:3}); return `${p.first} did the sensible thing and reported it.`;}},
+    ]},
+  // ---------- NIGHTCLUB CHOICE ----------
+  { id:'club_night', emoji:'🪩', title:'A wild night out', 
+    when:p=>p.age>=18&&p.age<=45, weight:2.5,
+    body:p=>`The club is electric tonight. A stranger offers ${p.first} something — a dare, a drink, an opportunity.`,
+    choices:[
+      {label:'Dance till dawn', sub:'+joy', effect:p=>{ fx(p,{happy:10,health:-3}); return `${p.first} danced like nobody was watching. Pure bliss.`;}},
+      {label:'Take the mystery pill', sub:'risky', effect:p=>{ if(chance(35)){ fx(p,{health:-15,happy:-8}); if(chance(40))p.addiction='party drugs'; return `Bad trip. ${p.first} woke up somewhere strange.`;} fx(p,{happy:12}); return `${p.first} had the night of their life. No regrets.`;}},
+      {label:'Network with the VIPs', sub:'+connections', effect:p=>{ if(chance(45)){ const inc=5000+rnd(40000); fx(p,{money:inc,fame:4}); return `${p.first} charmed the right person — ${money(inc)} opportunity.`;} return `${p.first} schmoozed but nothing came of it.`;}},
+      {label:'Leave early', sub:'+health', effect:p=>{ fx(p,{health:4,happy:2}); return `${p.first} called it an early night. Responsible.`;}},
+    ]},
+  // ---------- LIGHTNING (rare, life-altering) ----------
+  { id:'lottery_lightning', emoji:'🎰', title:'A scratch ticket', once:true,
+    when:p=>p.age>=18, weight:0.4,
+    body:p=>`${p.first} bought a scratch ticket on a whim. The numbers are lining up…`,
+    choices:[
+      {label:'Scratch it', sub:'fate decides', effect:p=>{ const r=rnd(100); if(r<8){ const jp=1000000+rnd(20000000); fx(p,{money:jp,happy:25,fame:10}); return `JACKPOT. ${p.first} won ${money(jp)}!`;} if(r<30){ const w=1000+rnd(9000); fx(p,{money:w,happy:5}); return `A small win — ${money(w)}.`;} return `Nothing. ${p.first} tossed it in the bin.`;}},
+    ]},
+  { id:'stranger_inheritance', emoji:'📜', title:'A letter from a lawyer', once:true,
+    when:p=>p.age>=25, weight:0.5,
+    body:p=>`A lawyer writes: a distant relative ${p.first} never met has died and named them in the will.`,
+    choices:[
+      {label:'Claim the inheritance', sub:'?', effect:p=>{ if(chance(20)){ fx(p,{money:-3000}); return `It was a scam. ${p.first} lost ${money(3000)} in 'fees'.`;} const inh=30000+rnd(800000); fx(p,{money:inh,happy:10}); return `It was real — ${money(inh)} richer.`;}},
+      {label:'Ignore it', sub:'safe', effect:p=>{ return `${p.first} assumed it was junk mail and never found out.`;}},
+    ]},
+  { id:'family_movein', emoji:'🏠', title:'A relative needs a place', 
+    when:p=>{ const h=p.assets.find(a=>a.kind==='house'); return (h&&h.beds>=4||p.stats.fame>40)&&p.age>=25; }, weight:2,
+    body:p=>`Word's gotten around that ${p.first} is doing well. A relative who's fallen on hard times asks to move in for a while.`,
+    choices:[
+      {label:'Take them in', sub:'+joy, +costs', effect:p=>{ const sx=makeSex(); const r={name:newFirst(sx)+' '+p.last,kind:pick(['Cousin','Uncle','Aunt','Sibling']),sex:sx,bond:55+rnd(25),alive:true,id:nid(),note:'lives with you'}; p.rels.push(r); p._housemates=(p._housemates||0)+1; fx(p,{happy:8}); return `${r.name.split(' ')[0]} moved in. The house feels fuller.`;}},
+      {label:'Offer money instead', sub:'-$ , +goodwill', effect:p=>{ const give=Math.min(p.money,5000+rnd(15000)); fx(p,{money:-give,happy:3}); return `${p.first} helped them out with ${money(give)} instead.`;}},
+      {label:'Turn them away', sub:'-joy', effect:p=>{ fx(p,{happy:-6}); return `${p.first} said no. It caused some family friction.`;}},
+    ]},
 ];
+function takeJobSilent(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; p._stage=0; p._stageYears=0; p.jobTitle=c.stages?c.stages[0].t:null; }
 
 function eventEligible(p, ev){
   if(ev.once && p.seenEvents.includes(ev.id)) return false;
@@ -1584,6 +1713,7 @@ function deathScreen(deceased){
 }
 function switchTo(h){
   G.cur=h.id; G.gen=h.gen;
+  _logShownFor=null; // force a fresh log for the new character
   log(`The thread passes to ${h.first}. ${pick(['A new chapter.','Life goes on.','The story continues.'])}`,'big');
   render(); root.innerHTML='';
 }
@@ -1820,6 +1950,15 @@ function openActivities(){
   let html=`<div class="grab"></div><h3>What will ${p.first} do?</h3><p class="hint">Age ${p.age} · ${money(p.money)} in purse</p>`;
   const opts=[];
 
+  // CORE FREE-TIME — always pinned to the very top (most-used actions)
+  if(p.age>=4){
+    opts.push(OH('— Free time —'));
+    opts.push(O('🏋️','Hit the gym','+health, +athletic, +looks',0,()=>{p.stats.health=clamp(p.stats.health+5);p.stats.athletic=clamp(p.stats.athletic+4);p.stats.looks=clamp(p.stats.looks+2);closeSheet();log(`${p.first} put in work at the gym.`,'good');render();}));
+    opts.push(O('📕','Study something','+smarts',0,()=>{p.stats.smarts=clamp(p.stats.smarts+5);closeSheet();log(`${p.first} read late into the night. Sharper for it.`,'good');render();}));
+    opts.push(O('🎉','Go out','+joy, −a little money',-300,()=>{p.stats.happy=clamp(p.stats.happy+8);p.money-=Math.min(p.money,300);closeSheet();log(`${p.first} had a night to remember (mostly).`,'good');render();}));
+    opts.push(O('🧘','Rest & reflect','+health, +joy',0,()=>{p.stats.health=clamp(p.stats.health+3);p.stats.happy=clamp(p.stats.happy+4);closeSheet();log(`A slow, restful stretch did ${p.first} good.`,'good');render();}));
+  }
+
   // EDUCATION
   if(p.age>=18 && p.edu<3 && !p._college){
     if(p.edu<1) opts.push(O('🛠','Trade school / academy','2 years · opens skilled work',-6000,()=>enrollCollege(p,1,2)));
@@ -1899,12 +2038,57 @@ function openActivities(){
     }
   }
 
-  // FREE TIME (always)
-  opts.push(OH('— Free time —'));
-  opts.push(O('🏋️','Hit the gym','+health, +athletic, +looks',0,()=>{p.stats.health=clamp(p.stats.health+5);p.stats.athletic=clamp(p.stats.athletic+4);p.stats.looks=clamp(p.stats.looks+2);closeSheet();log(`${p.first} put in work at the gym.`,'good');render();}));
-  opts.push(O('📕','Study something','+smarts',0,()=>{p.stats.smarts=clamp(p.stats.smarts+5);closeSheet();log(`${p.first} read late into the night. Sharper for it.`,'good');render();}));
-  opts.push(O('🎉','Go out','+joy, −a little money',-300,()=>{p.stats.happy=clamp(p.stats.happy+8);p.money-=Math.min(p.money,300);closeSheet();log(`${p.first} had a night to remember (mostly).`,'good');render();}));
-  opts.push(O('🧘','Rest & reflect','+health, +joy',0,()=>{p.stats.health=clamp(p.stats.health+3);p.stats.happy=clamp(p.stats.happy+4);closeSheet();log(`A slow, restful stretch did ${p.first} good.`,'good');render();}));
+  // CITIZENSHIP & POWER (adults)
+  if(p.age>=18){
+    opts.push(OH('— Country & power —'));
+    const here = p.citizenship || G.country || 'your country';
+    // emigrate
+    opts.push(O('🛂','Emigrate abroad',`leave ${here} · $20,000`,0,()=>{
+      if(p.money<20000){ closeSheet(); log(`${p.first} can't afford to emigrate.`,'muted'); render(); return; }
+      const dest=pick(BIRTHPLACES.filter(b=>b[1]!==here)); p.money-=20000; p.citizenship=dest[1]; G.country=dest[1];
+      closeSheet(); log(`${p.first} emigrated to ${dest[0]}, ${dest[1]} and began a new life.`,'big'); render();
+    }, p.money<20000));
+    // seek to rule (president/PM via politics, or monarchy via fame/wealth)
+    if(!p.ruler){
+      opts.push(O('👑','Seek to rule the nation',`run for power in ${here}`,0,()=>{
+        closeSheet();
+        const country=p.citizenship||G.country||'the nation';
+        // odds based on fame, money, smarts, charming trait
+        const odds = 8 + p.stats.fame*0.4 + (p.money>1000000?15:p.money>200000?6:0) + (p.traits.includes('charming')?12:0) + p.stats.looks*0.1;
+        if(chance(odds)){
+          const title=pick(['President','Prime Minister','Supreme Leader','Chancellor']);
+          p.ruler={title,country}; p.salary=Math.max(p.salary,400000); p.stats.fame=clamp(p.stats.fame+30);
+          log(`By will and fortune, ${p.first} became ${title} of ${country}. Power, at last.`,'big');
+        } else {
+          const cost=Math.min(p.money,20000+rnd(80000)); p.money-=cost;
+          log(`${p.first}'s bid for power failed. The campaign cost ${money(cost)}.`,'bad');
+        }
+        render();
+      }));
+    } else {
+      // ruling actions
+      opts.push(O('📜','Pass a law',`as ${p.ruler.title} of ${p.ruler.country}`,0,()=>{
+        closeSheet();
+        const law=pick([
+          {t:`${p.first} abolished income tax. The people rejoiced.`,f:{happy:8,fame:6}},
+          {t:`${p.first} declared a national holiday in their own honor.`,f:{fame:10,happy:4}},
+          {t:`${p.first} nationalized industry, filling the treasury.`,f:{money:500000,fame:-4}},
+          {t:`${p.first} funded schools and hospitals nationwide.`,f:{fame:12,happy:6}},
+          {t:`${p.first} cracked down on dissent. Feared, not loved.`,f:{fame:8,happy:-6}},
+        ]);
+        worldEvent(p, law.t, {}); fx(p, law.f); render();
+      }));
+      opts.push(O('🏛','Hold onto power','survive the next election/coup',0,()=>{
+        closeSheet();
+        if(chance(p.stats.fame>50?75:55)){ log(`${p.first} held onto power another term.`,'good'); }
+        else { log(`${p.first} was overthrown and lost the ${p.ruler.title.toLowerCase()}ship.`,'bad'); p.ruler=null; p.stats.happy=clamp(p.stats.happy-15); if(chance(30)){p.inPrison=true;p.prisonYears=3+rnd(6);log(`${p.first} was imprisoned by the new regime.`,'bad');} }
+        render();
+      }));
+    }
+  }
+
+  // FREE TIME EXTRAS (nightlife, social, gambling, crime, etc.)
+  opts.push(OH('— More to do —'));
   if(p.age>=18){
     opts.push(O('🌃','Hit the nightlife','clubs & bars · +joy, meet people',0,()=>{
       p.money-=Math.min(p.money,200+rnd(400)); p.stats.happy=clamp(p.stats.happy+9); closeSheet();
@@ -1964,12 +2148,31 @@ function openActivities(){
   // SHOP — assets & pets
   if(p.age>=18){
     opts.push(OH('— Buy things —'));
-    [['🚗','Used car','car',8000],['🚙','New car','car',32000],['🏎','Sports car','car',95000],
-     ['🏠','Starter home','house',180000],['🏡','Family house','house',420000],['🏰','Estate','house',1500000]].forEach(([ic,nm,kind,price])=>{
-      opts.push(O(ic,nm,p.money>=price?`${money(price)} · ${kind==='house'?'appreciates':'depreciates'}`:`can't afford (${money(price)})`,0,()=>{
+    [['🚗','Used car','car',8000],['🚙','New car','car',32000],['🏎','Sports car','car',95000]].forEach(([ic,nm,kind,price])=>{
+      opts.push(O(ic,nm,p.money>=price?`${money(price)} · depreciates`:`can't afford (${money(price)})`,0,()=>{
         p.money-=price; p.assets.push({kind,name:nm,value:price,year:G.year}); closeSheet();
         log(`${p.first} bought a ${nm.toLowerCase()} for ${money(price)}.`,'big'); render();
       }, p.money<price));
+    });
+    // HOUSES — tiered, with size (bedrooms) that gates who can move in
+    const houses=[
+      ['🏚','Tiny apartment','house',70000,1],
+      ['🏠','Starter home','house',180000,2],
+      ['🏡','Family house','house',420000,4],
+      ['🏘','Big suburban home','house',780000,6],
+      ['🏰','Sprawling estate','house',1500000,9],
+      ['🏯','Lavish mansion','house',4500000,14],
+    ];
+    const curHouse=p.assets.find(a=>a.kind==='house');
+    houses.forEach(([ic,nm,kind,price,beds])=>{
+      const owned=curHouse&&curHouse.name===nm;
+      const label = curHouse? (owned?'current home':`upgrade · ${beds} bed`) : `${money(price)} · ${beds} bed`;
+      opts.push(O(ic,nm,owned?'✓ '+label:(p.money>=price?label:`can't afford (${money(price)})`),0,()=>{
+        // selling old house recoups its value toward the new one
+        if(curHouse){ p.money+=curHouse.value; p.assets=p.assets.filter(a=>a!==curHouse); }
+        p.money-=price; p.assets.push({kind,name:nm,value:price,year:G.year,beds}); closeSheet();
+        log(`${p.first} ${curHouse?'moved into':'bought'} a ${nm.toLowerCase()}.`,'big'); p.stats.happy=clamp(p.stats.happy+6); render();
+      }, owned || p.money<price));
     });
     [['🐕','Adopt a dog','Dog',400],['🐈','Adopt a cat','Cat',250],['🦜','Buy a parrot','Parrot',1200]].forEach(([ic,nm,kind,price])=>{
       opts.push(O(ic,nm,`${money(price)} · a loyal companion`,0,()=>{
@@ -1999,7 +2202,10 @@ function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base
       restaurateur:`${p.first} started as a line cook, burning their hands and learning fast.`,
       esports:`${p.first} started grinding ranked ladders into the night.`,
       astronaut:`${p.first} was accepted into the astronaut candidate program. The stars await.`,
-      crimelord:`${p.first} stepped into the underworld as a street hustler. There's money here, and danger.`}[c.k]
+      crimelord:`${p.first} stepped into the underworld as a street hustler. There's money here, and danger.`,
+      superhero:`${p.first} sewed a costume and became a masked vigilante. The city doesn't know their name — yet.`,
+      villain:`${p.first} embraced villainy. The world will learn to fear them.`,
+      madsci:`${p.first} set up a lab in the garage and started bending the rules of nature.`}[c.k]
       || `${p.first} began the long climb in ${c.l.toLowerCase()}.`;
     log(intro+headstart,'big'); render(); return;
   }
@@ -2190,6 +2396,8 @@ function openSelf(){
     ${(p.partnerHistory&&p.partnerHistory.filter(h=>h.status==='Ex-spouse').length)?`<br>${p.partnerHistory.filter(h=>h.status==='Ex-spouse').length} ex-spouse(s) · ${p.partnerHistory.filter(h=>h.status==='Fling').length} past fling(s)`:''}
     ${p.onSocial?`<br>${p.socialFollowers.toLocaleString()} social followers`:''}
     ${p.record.length?`<br>Record: ${p.record.join(', ')}`:''}
+    ${p.ruler?`<br><span style="color:var(--gold)">${p.ruler.title} of ${p.ruler.country} 👑</span>`:''}
+    ${p.citizenship&&p.citizenship!==(G.hometown||'').split(', ')[1]?`<br>Citizen of ${p.citizenship}`:''}
     ${p.orientation&&p.orientation!=='straight'?`<br>Orientation: ${p.orientation==='gay'?(p.sex==='f'?'lesbian':'gay'):'bisexual'}`:''}
     ${p.inPrison?`<br><span style="color:var(--blood)">In prison — ${p.lifeSentence?'LIFE sentence':p.prisonYears+' year(s) left'}</span>`:''}
   </div>
