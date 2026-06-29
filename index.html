@@ -2109,6 +2109,122 @@ const CHOICE_EVENTS = [
       {label:'Make peace', sub:'+joy', effect:p=>{ const r=p.rels.filter(x=>x.alive&&x.bond<35).sort((a,b)=>a.bond-b.bond)[0]; if(r)r.bond=clamp(r.bond+40); fx(p,{happy:14}); return `${p.first} reached out. Old wounds began to heal.`;}},
       {label:'Let it lie', sub:'-joy', effect:p=>{fx(p,{happy:-6}); return `${p.first} let the silence stand. Some doors stay closed.`;}},
     ]},
+  // ========== FRIENDSHIP DYNAMICS ==========
+  { id:'friend_falling_out', emoji:'💔', title:'A friendship tested', 
+    when:p=>p.age>=16&&p.rels.some(r=>r.kind==='Friend'&&r.alive&&r.bond>40), weight:1.8,
+    body:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive&&r.bond>40); return `${p.first} and their friend ${f.name.split(' ')[0]} had a bad falling out over something that got out of hand.`;},
+    choices:[
+      {label:'Apologize first', sub:'+bond, swallow pride', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive&&r.bond>40); if(f)f.bond=clamp(f.bond+18); fx(p,{happy:6}); return `${p.first} reached out first. ${f?f.name.split(' ')[0]:'They'} was relieved — the friendship deepened.`;}},
+      {label:'Wait for them to apologize', sub:'risky', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive&&r.bond>40); if(chance(45)){ if(f)f.bond=clamp(f.bond+10); return `Eventually ${f?f.name.split(' ')[0]:'they'} came around. Pride intact.`;} if(f)f.bond=clamp(f.bond-25); fx(p,{happy:-5}); return `Neither budged. The friendship quietly died.`;}},
+      {label:'End the friendship', sub:'-friend', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive&&r.bond>40); if(f){f.alive=false;f.note='estranged';} fx(p,{happy:-4}); return `${p.first} cut them off for good. Some bridges, once burned, stay burned.`;}},
+    ]},
+  { id:'friend_success', emoji:'🌟', title:'A friend\'s big win', 
+    when:p=>p.age>=20&&p.rels.some(r=>r.kind==='Friend'&&r.alive), weight:1.5,
+    body:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); return `${p.first}'s friend ${f.name.split(' ')[0]} just landed a huge success — and it stings a little.`;},
+    choices:[
+      {label:'Celebrate them wholeheartedly', sub:'+bond, +character', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(f)f.bond=clamp(f.bond+15); fx(p,{happy:6}); return `${p.first} was genuinely happy for them. True friendship.`;}},
+      {label:'Let envy creep in', sub:'-bond', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(f)f.bond=clamp(f.bond-12); fx(p,{happy:-6}); return `${p.first} couldn't hide the jealousy. It put a distance between them.`;}},
+      {label:'Ask them to help you up too', sub:'+opportunity', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(chance(55)){ fx(p,{money:5000+rnd(30000),happy:4}); if(f)f.bond=clamp(f.bond+6); return `${f?f.name.split(' ')[0]:'Your friend'} opened a door for ${p.first}. That's what friends are for.`;} fx(p,{happy:-3}); return `They brushed off the ask. ${p.first} felt the sting of it.`;}},
+    ]},
+  { id:'friend_bad_influence', emoji:'😈', title:'A friend with bad ideas', 
+    when:p=>p.age>=15&&p.age<=40&&p.rels.some(r=>r.kind==='Friend'&&r.alive), weight:1.5,
+    body:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); return `${p.first}'s friend ${f.name.split(' ')[0]} is pulling them toward trouble — late nights, bad choices, easy money.`;},
+    choices:[
+      {label:'Follow them into it', sub:'thrill, risk', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); fx(p,{happy:5}); if(chance(35)){ p.record.push('Minor offense'); fx(p,{happy:-8}); return `It went too far. ${p.first} ended up in trouble alongside ${f?f.name.split(' ')[0]:'them'}.`;} if(chance(30))addAddiction(p,'party_drugs'); return `Wild times with ${f?f.name.split(' ')[0]:'a friend'}. Fun, until it isn't.`;}},
+      {label:'Pull them toward better', sub:'+character', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(chance(45)){ if(f)f.bond=clamp(f.bond+12); fx(p,{happy:4}); setFlag(p,'goodHeart'); return `${p.first} talked sense into ${f?f.name.split(' ')[0]:'them'}. A friendship that lifts.`;} if(f)f.bond=clamp(f.bond-8); return `They didn't want to hear it. ${p.first} watched them spiral.`;}},
+      {label:'Distance yourself', sub:'+safety, -friend', effect:p=>{ const f=p.rels.find(r=>r.kind==='Friend'&&r.alive); if(f)f.bond=clamp(f.bond-15); fx(p,{smarts:2}); return `${p.first} stepped back from the friendship. Self-preservation.`;}},
+    ]},
+  { id:'reunion_old_friend', emoji:'📬', title:'A voice from the past', 
+    when:p=>p.age>=30, weight:1.3,
+    body:p=>`Out of nowhere, a childhood friend ${p.first} lost touch with decades ago reaches out.`,
+    choices:[
+      {label:'Rekindle the friendship', sub:'+joy', effect:p=>{ const f=addFriend(p); f.bond=70; f.note='old friend'; fx(p,{happy:12}); return `${p.first} and ${f.name.split(' ')[0]} picked up like no time had passed. A gift.`;}},
+      {label:'Catch up once, then drift', sub:'+nostalgia', effect:p=>{ fx(p,{happy:5}); return `A warm coffee and a flood of memories, but their lives had diverged. Still, nice.`;}},
+      {label:'Ignore the message', sub:'nothing', effect:p=>{ fx(p,{happy:-1}); return `${p.first} let it sit unread. The past stayed in the past.`;}},
+    ]},
+  // ========== MARRIAGE & PARTNERSHIP ==========
+  { id:'marriage_rough_patch', emoji:'🌧', title:'A rough patch', 
+    when:p=>p.married&&p.rels.some(r=>r.kind==='Spouse'&&r.alive), weight:2,
+    body:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); return `${p.first} and ${sp.name.split(' ')[0]} have been distant and snapping at each other lately. The spark feels dim.`;},
+    choices:[
+      {label:'Go to couples counseling', sub:'-$, +bond', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); const cost=Math.min(p.money,3000); fx(p,{money:-cost}); if(chance(70)){ if(sp)sp.bond=clamp(sp.bond+25); fx(p,{happy:8}); return `Counseling helped ${p.first} and ${sp?sp.name.split(' ')[0]:'their spouse'} really hear each other again.`;} if(sp)sp.bond=clamp(sp.bond+5); return `Counseling was hard, but they're trying.`;}},
+      {label:'Plan a second honeymoon', sub:'-$, +romance', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); const cost=Math.min(p.money,8000); fx(p,{money:-cost,happy:8}); if(sp)sp.bond=clamp(sp.bond+18); return `${p.first} whisked ${sp?sp.name.split(' ')[0]:'their spouse'} away and rediscovered why they fell in love.`;}},
+      {label:'Let it fester', sub:'risky', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); if(sp)sp.bond=clamp(sp.bond-15); fx(p,{happy:-6}); return `${p.first} buried it and hoped it would pass. The distance grew.`;}},
+    ]},
+  { id:'spouse_career_clash', emoji:'⚖️', title:'Whose dream comes first?', once:true,
+    when:p=>p.married&&p.job!=='none'&&p.rels.some(r=>r.kind==='Spouse'&&r.alive), weight:1.6,
+    body:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); return `${sp.name.split(' ')[0]} has a huge career opportunity in another city — but it would upend ${p.first}'s own career.`;},
+    choices:[
+      {label:'Support their dream, sacrifice yours', sub:'-career, +bond', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); if(sp)sp.bond=clamp(sp.bond+25); fx(p,{happy:4}); if(p.salary>0)p.salary=Math.round(p.salary*0.85); return `${p.first} put ${sp?sp.name.split(' ')[0]:'their partner'} first. A loving sacrifice.`;}},
+      {label:'Ask them to stay for you', sub:'+career, -bond', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); if(sp)sp.bond=clamp(sp.bond-15); fx(p,{happy:2}); return `${sp?sp.name.split(' ')[0]:'They'} gave up the opportunity. A quiet resentment lingers.`;}},
+      {label:'Try long-distance', sub:'risky compromise', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); if(chance(50)){ if(sp)sp.bond=clamp(sp.bond+8); return `The distance was hard, but ${p.first} and ${sp?sp.name.split(' ')[0]:'their spouse'} made it work.`;} if(sp)sp.bond=clamp(sp.bond-20); fx(p,{happy:-6}); return `The miles wore them down. Things frayed.`;}},
+    ]},
+  { id:'renew_vows', emoji:'💞', title:'A milestone anniversary', once:true,
+    when:p=>p.married&&p.age>=45&&p.rels.some(r=>r.kind==='Spouse'&&r.alive&&r.bond>55), weight:1.5,
+    body:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); return `${p.first} and ${sp.name.split(' ')[0]} have reached a major anniversary together. A lifetime of love.`;},
+    choices:[
+      {label:'Renew your vows', sub:'+deep bond, +joy', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); const cost=Math.min(p.money,10000); fx(p,{money:-cost,happy:16}); if(sp)sp.bond=clamp(sp.bond+20); setFlag(p,'lifelongLove'); return `${p.first} and ${sp?sp.name.split(' ')[0]:'their spouse'} renewed their vows, surrounded by loved ones. A beautiful day.`;}},
+      {label:'A quiet dinner together', sub:'+bond', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); fx(p,{happy:8}); if(sp)sp.bond=clamp(sp.bond+10); return `Just the two of them, and a lifetime of memories. Perfect.`;}},
+    ]},
+  // ========== IN-LAWS ==========
+  { id:'inlaws_intro', emoji:'🏡', title:'Meeting the in-laws', once:true,
+    when:p=>p.married&&p.age<=55&&!hasFlag(p,'metInlaws')&&p.rels.some(r=>r.kind==='Spouse'&&r.alive), weight:2,
+    body:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); return `${p.first} is meeting ${sp.name.split(' ')[0]}'s parents for the first big family dinner. First impressions matter.`;},
+    choices:[
+      {label:'Charm them', sub:'+in-law bond', effect:p=>{ const sx=makeSex(); if(p.stats.charming>50||chance(55)){ const il={name:newFirst('f')+' '+pick(LAST),kind:'Mother-in-law',sex:'f',bond:70+rnd(15),alive:true,id:nid(),note:'in-law'}; p.rels.push(il); setFlag(p,'metInlaws'); setFlag(p,'inlawsLoveYou'); fx(p,{happy:8}); return `${p.first} won the in-laws over completely. ${il.name.split(' ')[0]} adores them.`;} const il={name:newFirst('f')+' '+pick(LAST),kind:'Mother-in-law',sex:'f',bond:40,alive:true,id:nid(),note:'in-law'}; p.rels.push(il); setFlag(p,'metInlaws'); fx(p,{happy:2}); return `It went… okay. The in-laws are reserving judgment.`;}},
+      {label:'Just be yourself', sub:'authentic', effect:p=>{ const il={name:newFirst('m')+' '+pick(LAST),kind:'Father-in-law',sex:'m',bond:55+rnd(20),alive:true,id:nid(),note:'in-law'}; p.rels.push(il); setFlag(p,'metInlaws'); fx(p,{happy:4}); return `${p.first} didn't perform — and the in-laws respected the honesty.`;}},
+      {label:'Clash over politics at dinner', sub:'-in-law bond', effect:p=>{ const il={name:newFirst('m')+' '+pick(LAST),kind:'Father-in-law',sex:'m',bond:25,alive:true,id:nid(),note:'in-law'}; p.rels.push(il); setFlag(p,'metInlaws'); setFlag(p,'inlawTrouble'); fx(p,{happy:-4}); return `Dinner turned into a debate. ${il.name.split(' ')[0]} and ${p.first} did NOT hit it off.`;}},
+    ]},
+  { id:'meddling_inlaw', emoji:'👵', title:'A meddling in-law', 
+    when:p=>p.married&&p.rels.some(r=>/-in-law/.test(r.kind)&&r.alive), weight:1.6,
+    body:p=>{ const il=p.rels.find(r=>/-in-law/.test(r.kind)&&r.alive); return `${il.name.split(' ')[0]} keeps inserting themselves into ${p.first}'s marriage and household decisions.`;},
+    choices:[
+      {label:'Set a firm boundary', sub:'+respect, tense', effect:p=>{ const il=p.rels.find(r=>/-in-law/.test(r.kind)&&r.alive); const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); if(chance(55)){ if(il)il.bond=clamp(il.bond+10); fx(p,{happy:5}); return `${p.first} set a respectful boundary, and it landed. ${il?il.name.split(' ')[0]:'They'} backed off.`;} if(il)il.bond=clamp(il.bond-15); if(sp)sp.bond=clamp(sp.bond-5); fx(p,{happy:-3}); return `The boundary caused a family rift. ${il?il.name.split(' ')[0]:'They'} took offense.`;}},
+      {label:'Win them over with kindness', sub:'+bond', effect:p=>{ const il=p.rels.find(r=>/-in-law/.test(r.kind)&&r.alive); if(il)il.bond=clamp(il.bond+18); fx(p,{happy:4}); return `${p.first} killed the meddling with kindness. ${il?il.name.split(' ')[0]:'They'} softened.`;}},
+      {label:'Let your spouse handle it', sub:'+marriage', effect:p=>{ const sp=p.rels.find(r=>r.kind==='Spouse'&&r.alive); if(sp)sp.bond=clamp(sp.bond+8); fx(p,{happy:2}); return `${p.first} let ${sp?sp.name.split(' ')[0]:'their spouse'} deal with their own parent. United front.`;}},
+    ]},
+  // ========== FAMILY DRAMA ==========
+  { id:'sibling_rivalry_adult', emoji:'⚔️', title:'Sibling rivalry, grown up', 
+    when:p=>p.age>=25&&p.rels.some(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive), weight:1.6,
+    body:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); return `${p.first}'s sibling ${s.name.split(' ')[0]} has always been competitive, and now they're openly comparing careers, money, and kids.`;},
+    choices:[
+      {label:'Rise above it', sub:'+character', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond+10); fx(p,{happy:5}); return `${p.first} refused to play the comparison game. The tension eased.`;}},
+      {label:'Put them in their place', sub:'-bond', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(s)s.bond=clamp(s.bond-15); fx(p,{happy:2}); return `${p.first} let them have it. Satisfying, but it cut deep.`;}},
+      {label:'Suggest a fresh start', sub:'+bond', effect:p=>{ const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(chance(60)){ if(s)s.bond=clamp(s.bond+20); fx(p,{happy:8}); return `${p.first} called a truce, and ${s?s.name.split(' ')[0]:'they'} actually welcomed it.`;} if(s)s.bond=clamp(s.bond+4); return `The olive branch was met halfway. Progress.`;}},
+    ]},
+  { id:'family_secret', emoji:'🤫', title:'A family secret surfaces', once:true,
+    when:p=>p.age>=25&&p.rels.some(r=>/Mother|Father/.test(r.kind)&&r.alive), weight:1.4,
+    body:p=>`${p.first} stumbles onto a long-buried family secret — something about their parents that changes everything.`,
+    choices:[
+      {label:'Confront the family', sub:'truth, +tension', effect:p=>{ const par=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); if(chance(50)){ if(par)par.bond=clamp(par.bond+10); fx(p,{happy:4,smarts:2}); return `The truth came out and, painfully, brought the family closer.`;} if(par)par.bond=clamp(par.bond-18); fx(p,{happy:-8}); return `The confrontation tore a wound open. Things may never be the same.`;}},
+      {label:'Keep it to yourself', sub:'+burden', effect:p=>{ fx(p,{happy:-4,stress:10}); setFlag(p,'keepsSecrets'); return `${p.first} carried the secret alone. It weighs on them.`;}},
+      {label:'Quietly investigate', sub:'+smarts', effect:p=>{ fx(p,{smarts:4}); seed(p,2,'family_mystery'); return `${p.first} started digging for the whole truth. There's more to uncover.`;}},
+    ]},
+  { id:'parent_needs_care', emoji:'🧓', title:'A parent needs care', 
+    when:p=>p.age>=40&&p.rels.some(r=>/Mother|Father/.test(r.kind)&&r.alive), weight:1.8,
+    body:p=>{ const par=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); return `${p.first}'s ${par.kind.toLowerCase()} is getting older and can no longer fully care for themselves.`;},
+    choices:[
+      {label:'Move them in with you', sub:'+bond, +burden', effect:p=>{ const par=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); if(par)par.bond=clamp(par.bond+22); fx(p,{happy:4,stress:12}); setFlag(p,'caregiver'); setFlag(p,'goodHeart'); return `${p.first} brought their ${par?par.kind.toLowerCase():'parent'} home. Exhausting, but precious time together.`;}},
+      {label:'Pay for quality care', sub:'-$, +comfort', effect:p=>{ const par=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); const cost=Math.min(p.money,Math.round(p.money*0.08)+20000); fx(p,{money:-cost}); if(par)par.bond=clamp(par.bond+10); return `${p.first} arranged the best care money could buy. ${money(cost)} well spent on the people who raised them.`;}},
+      {label:'Share duties with siblings', sub:'+teamwork', effect:p=>{ const par=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); const s=p.rels.find(r=>/Brother|Sister|Sibling/.test(r.kind)&&r.alive); if(par)par.bond=clamp(par.bond+12); if(s)s.bond=clamp(s.bond+10); fx(p,{happy:2}); return `${p.first} and the siblings split the caregiving. It drew the family together.`;}},
+      {label:'You can\'t take it on', sub:'-bond, guilt', effect:p=>{ const par=p.rels.find(r=>/Mother|Father/.test(r.kind)&&r.alive); if(par)par.bond=clamp(par.bond-10); fx(p,{happy:-8}); return `${p.first} couldn't manage it, and the guilt is heavy.`;}},
+    ]},
+  { id:'child_rebels', emoji:'🙅', title:'A child rebels', 
+    when:p=>p.rels.some(r=>r.kind==='Child'&&r.alive)&&p.age>=35, weight:1.7,
+    body:p=>{ const c=p.rels.find(r=>r.kind==='Child'&&r.alive); return `${p.first}'s child ${c.name.split(' ')[0]} is acting out — defiant, distant, running with a bad crowd.`;},
+    choices:[
+      {label:'Come down hard', sub:'strict', effect:p=>{ const c=p.rels.find(r=>r.kind==='Child'&&r.alive); if(chance(45)){ if(c)c.bond=clamp(c.bond+8); return `Tough love worked. ${c?c.name.split(' ')[0]:'They'} straightened out, grudgingly grateful later.`;} if(c)c.bond=clamp(c.bond-18); fx(p,{happy:-6}); return `The crackdown backfired. ${c?c.name.split(' ')[0]:'They'} pulled further away.`;}},
+      {label:'Try to understand them', sub:'+bond', effect:p=>{ const c=p.rels.find(r=>r.kind==='Child'&&r.alive); if(chance(60)){ if(c)c.bond=clamp(c.bond+18); fx(p,{happy:6}); return `${p.first} listened instead of lecturing. ${c?c.name.split(' ')[0]:'They'} opened up.`;} if(c)c.bond=clamp(c.bond+4); return `It was slow going, but ${p.first} kept the door open.`;}},
+      {label:'Give them space', sub:'risky', effect:p=>{ const c=p.rels.find(r=>r.kind==='Child'&&r.alive); if(chance(50)){ if(c)c.bond=clamp(c.bond+6); return `${c?c.name.split(' ')[0]:'They'} worked through it and came back around.`;} if(c)c.bond=clamp(c.bond-10); return `The space became a chasm. ${p.first} worries.`;}},
+    ]},
+  { id:'family_reunion_drama', emoji:'🍗', title:'The family reunion', 
+    when:p=>p.age>=28&&p.rels.filter(r=>r.alive&&/Mother|Father|Brother|Sister|Sibling|Child/.test(r.kind)).length>=2, weight:1.5,
+    body:p=>`The whole family is gathering, and old tensions are simmering under the holiday cheer.`,
+    choices:[
+      {label:'Play peacemaker', sub:'+bonds', effect:p=>{ if(chance(60)){ p.rels.filter(r=>r.alive&&/Mother|Father|Brother|Sister|Sibling|Child/.test(r.kind)).forEach(r=>r.bond=clamp(r.bond+8)); fx(p,{happy:8}); setFlag(p,'familyGlue'); return `${p.first} kept the peace and brought everyone together. The family's heart.`;} fx(p,{stress:8}); return `${p.first} tried to keep things civil. Mostly succeeded.`;}},
+      {label:'Stir the pot', sub:'chaos', effect:p=>{ p.rels.filter(r=>r.alive&&/Mother|Father|Brother|Sister|Sibling/.test(r.kind)).forEach(r=>r.bond=clamp(r.bond-6)); fx(p,{happy:3}); return `${p.first} couldn't resist airing old grievances. Fireworks.`;}},
+      {label:'Stay out of it', sub:'neutral', effect:p=>{ fx(p,{happy:2}); return `${p.first} loaded a plate and stayed far from the drama. Wise.`;}},
+    ]},
   // ---------- VILLAIN ORIGIN (no crime career needed) ----------
   { id:'villain_origin', emoji:'⚡', title:'A turning point', once:true,
     when:p=>p.age>=20&&p.job!=='villain'&&p.job!=='superhero'&&(p.stats.happy<35||p.stats.smarts>75)&&chance(100), weight:1.4,
@@ -3434,6 +3550,9 @@ function lifeSummary(p){
   if(hasFlag(p,'worldTraveler')) items.push('Traveled the world in retirement');
   if(hasFlag(p,'belovedElder')||hasFlag(p,'familyHistorian')) items.push('A beloved grandparent');
   if(hasFlag(p,'dynastyBuilder')) items.push('Built a family dynasty');
+  if(hasFlag(p,'lifelongLove')) items.push('Shared a lifelong love');
+  if(hasFlag(p,'familyGlue')) items.push('The heart that held the family together');
+  if(hasFlag(p,'caregiver')) items.push('Cared for an aging parent');
   if(hasFlag(p,'foundPeace')) items.push('Made peace before the end');
   if(hasFlag(p,'olympiadChamp')) items.push('Won an academic olympiad');
   if(hasFlag(p,'nobelLaureate')) items.push('Nobel laureate');
@@ -3550,7 +3669,7 @@ function relTick(p){
 function openRelations(){
   const p=me();
   let html=`<div class="grab"></div><h3>People in ${p.first}'s life</h3><p class="hint">Tap someone to spend time with them.</p>`;
-  const order={'Spouse':0,'Partner':1,'Child':2,'Mother':3,'Father':3,'Sister':4,'Brother':4,'Sibling':4,'Friend':5,'Ex-spouse':6};
+  const order={'Spouse':0,'Partner':1,'Child':2,'Mother':3,'Father':3,'Sister':4,'Brother':4,'Sibling':4,'Mother-in-law':5,'Father-in-law':5,'Friend':6,'Ex-spouse':7};
   const rels=[...p.rels].sort((a,b)=>(order[a.kind]??9)-(order[b.kind]??9));
   if(!rels.length) html+=`<p class="hint">No one close right now.</p>`;
   rels.forEach((r,i)=>{
@@ -3893,6 +4012,8 @@ function relEmoji(r){
   if(r.kind==='Mother')return '👩';
   if(r.kind==='Father')return '👨';
   if(r.kind==='Ex-spouse')return '💔';
+  if(/-in-law/.test(r.kind))return r.sex==='f'?'👵':'👴';
+  if(r.kind==='Friend')return '🙋';
   if(/Sister|Brother|Sibling/.test(r.kind))return '🧑';
   return '🙂';
 }
