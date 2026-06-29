@@ -553,6 +553,7 @@ function blankPerson(opt={}){
     henchman:null,     // {name, loyalty} — villain's minion
     heat:0,            // villain notoriety/police attention
     acqTraits:[],      // acquired traits (handsome, anxious, genius...) that nudge stats
+    prenup:false,      // signed a prenuptial agreement
     rels: opt.rels ?? [],   // {name,kind,sex,bond,alive,id}
     childrenIds: [],
     parentIds: opt.parentIds ?? [],
@@ -564,6 +565,8 @@ function blankPerson(opt={}){
     socialFollowers: 0, onSocial:false,
     record: [],  // crimes/convictions
     inPrison:false, prisonYears:0,
+    prisonRep:0,       // reputation/respect inside (0-100)
+    prisonRole:null,   // 'network','shotcaller','warden-favored', etc.
     addiction:null,
     conditions:[], // chronic health conditions
     seeds:[],      // delayed consequences {dueAge, kind, data}
@@ -628,6 +631,7 @@ function migrate(){
     if(p.henchman===undefined) p.henchman=null;
     if(p.heat==null) p.heat=0;
     if(!p.acqTraits) p.acqTraits=[];
+    if(p.prenup==null) p.prenup=false;
     if(p.q==null) p.q=0;
     if(p.greek==null) p.greek=null;
     if(p.collegeSport==null) p.collegeSport=null;
@@ -638,6 +642,8 @@ function migrate(){
     if(p.onSocial==null) p.onSocial=false;
     if(p.insured==null) p.insured=false;
     if(p.inPrison==null) p.inPrison=false;
+    if(p.prisonRep==null) p.prisonRep=0;
+    if(p.prisonRole===undefined) p.prisonRole=null;
     if(p.prisonYears==null) p.prisonYears=0;
     if(!p.bday) p.bday={m:rnd(12),day:1+rnd(28)};
   });
@@ -887,13 +893,22 @@ function quarterTick(p, done){
       render(); showFightPrep(p, ()=>{ if(done)done(); }); return;
     }
   }
-  // chance of an interactive choice this quarter
-  if(p.alive && !p.inPrison && chance(38)){
+  // PRISON: a separate world of interactive events while locked up
+  if(p.alive && p.inPrison){
+    if(chance(55)){
+      const ev=rollPrisonEvent(p);
+      if(ev){ render(); showChoiceEvent(p, ev, ()=>{ if(done)done(); }, {quarter:true}); return; }
+    }
+    if(chance(40)){ prisonQuarterEvent(p); }
+    if(done) done(); return;
+  }
+  // chance of an interactive choice this quarter (single gate — fires more reliably now)
+  if(p.alive && chance(55)){
     const ev=rollInteractiveEvent(p);
     if(ev){ render(); showChoiceEvent(p, ev, ()=>{ if(done)done(); }, {quarter:true}); return; }
   }
-  // otherwise a small one-tap quarter event
-  if(p.alive && chance(45)){ quarterEvent(p); }
+  // otherwise a small one-tap quarter event (high floor so quarters rarely feel dead)
+  if(p.alive && chance(75)){ quarterEvent(p); }
   if(done) done();
 }
 // fight career: prep this quarter, then fight
@@ -1095,7 +1110,7 @@ function systemsTick(p){
       p.prisonYears--;
       // chance of early parole for good behavior
       if(p.prisonYears>1 && p._yearsServed>=2 && chance(12)){ p.prisonYears=0; log(`${p.first} was granted early parole for good behavior.`,'good'); }
-      if(p.prisonYears<=0){ p.inPrison=false; p._yearsServed=0; p._wasCrime=false; p._villainJailed=false; p.securityLevel=0; p.escapeAttempts=0; log(`${p.first} was released from prison. A second chance.`,'big'); }
+      if(p.prisonYears<=0){ p.inPrison=false; p._yearsServed=0; p._wasCrime=false; p._villainJailed=false; p.securityLevel=0; p.escapeAttempts=0; p.prisonRep=0; p.prisonRole=null; clearFlag(p,'prisonNetwork'); clearFlag(p,'prisonGang'); clearFlag(p,'snitch'); clearFlag(p,'ownsGuard'); log(`${p.first} was released from prison. A second chance.`,'big'); }
     }
   }
 
@@ -2024,8 +2039,182 @@ const CHOICE_EVENTS = [
       {label:'Buy a fistful of tickets', sub:'-$, dreams', effect:p=>{ const spend=Math.min(p.money,200); fx(p,{money:-spend}); const r=rnd(1000); if(r<2){ const jp=2000000+rnd(40000000); fx(p,{money:jp,happy:30,fame:8}); return `LIFE-CHANGING. ${p.first} hit the jackpot — ${money(jp)}!`;} if(r<60){ const w=200+rnd(3000); fx(p,{money:w,happy:5}); return `${p.first} won a little — ${money(w)}.`;} fx(p,{happy:-2}); return `Nothing. ${p.first} swears off lottery tickets. Again.`;}},
       {label:'Save the money', sub:'+smarts', effect:p=>{ fx(p,{smarts:1}); return `${p.first} kept their money. The house always wins, after all.`;}},
     ]},
+  // ========== MORAL CHOICES (ethical / unethical) ==========
+  { id:'moral_wallet', emoji:'👛', title:'A lost wallet', 
+    when:p=>p.age>=10, weight:2,
+    body:p=>`${p.first} finds a wallet stuffed with cash on the sidewalk. There's an ID inside.`,
+    choices:[
+      {label:'Return it untouched', sub:'the right thing', effect:p=>{ fx(p,{happy:6}); setFlag(p,'goodHeart'); if(chance(30)){const r=200+rnd(800);fx(p,{money:r});return `${p.first} returned it. The grateful owner gave a ${money(r)} reward.`;} return `${p.first} returned it. The owner was overjoyed. Some things matter more than money.`;}},
+      {label:'Take the cash, ditch the wallet', sub:'+$, -conscience', effect:p=>{ const take=100+rnd(900); fx(p,{money:take,happy:-3}); setFlag(p,'tookWallet'); return `${p.first} pocketed ${money(take)} and dropped the wallet in a bin. Nobody saw.`;}},
+      {label:'Leave it where it is', sub:'neutral', effect:p=>{ return `${p.first} left it for someone else to deal with.`;}},
+    ]},
+  { id:'moral_tax', emoji:'🧾', title:'A chance to cheat', 
+    when:p=>p.age>=25&&p.money>40000, weight:1.6,
+    body:p=>`${p.first}'s accountant hints at a way to hide income from the taxman. It's almost certainly illegal.`,
+    choices:[
+      {label:'Hide the money', sub:'+$, risk', effect:p=>{ if(chance(25)){ const fine=Math.min(p.money,30000+rnd(60000)); fx(p,{money:-fine,happy:-8}); p.record.push('Tax fraud'); return `${p.first} got audited. The fine and shame cost ${money(fine)}.`;} const saved=10000+rnd(40000); fx(p,{money:saved}); setFlag(p,'taxCheat'); return `${p.first} hid ${money(saved)} from the IRS. Got away with it — this year.`;}},
+      {label:'Pay every cent owed', sub:'+integrity', effect:p=>{ fx(p,{happy:3}); setFlag(p,'honest'); return `${p.first} paid in full. Clean conscience, lighter wallet.`;}},
+    ]},
+  { id:'moral_credit', emoji:'🏆', title:'Whose idea was it?', 
+    when:p=>p.age>=22&&p.job!=='none'&&!p.inPrison, weight:1.6,
+    body:p=>`A junior colleague's brilliant idea lands on ${p.first}'s desk. The boss assumes it was ${p.first}'s. They could take the credit.`,
+    choices:[
+      {label:'Take the credit', sub:'+career, -ethics', effect:p=>{ fx(p,{fame:4,money:2000+rnd(8000)}); setFlag(p,'creditThief'); return `${p.first} let the boss believe it. A promotion may follow — and a guilty itch.`;}},
+      {label:'Give them the credit', sub:'+respect', effect:p=>{ fx(p,{happy:5}); setFlag(p,'goodHeart'); if(chance(40)){fx(p,{fame:3});return `${p.first} named the real author. The whole team respects them more for it.`;} return `${p.first} did the right thing quietly.`;}},
+    ]},
+  { id:'moral_whistleblow', emoji:'🚩', title:'Something isn\'t right', 
+    when:p=>p.age>=25&&p.job!=='none'&&!p.inPrison&&p.job!=='villain'&&p.job!=='crimelord', weight:1.4,
+    body:p=>`${p.first} discovers their company is doing something dangerous and illegal, hurting people to save money.`,
+    choices:[
+      {label:'Blow the whistle', sub:'brave, costly', effect:p=>{ if(p.job!=='none')endJob(p,`${p.first} was pushed out after exposing the truth.`); fx(p,{happy:6,fame:10}); setFlag(p,'whistleblower'); worldEvent(p,`${p.first} exposed a corporate scandal that protected thousands.`,{hope:true}); return `${p.first} went public. They lost the job, but did something that mattered.`;}},
+      {label:'Stay quiet, keep your job', sub:'safe, -conscience', effect:p=>{ fx(p,{happy:-6,money:5000}); setFlag(p,'lookedAway'); return `${p.first} said nothing and kept collecting a paycheck. The guilt is a quiet companion.`;}},
+      {label:'Quietly take a bribe to forget it', sub:'+$, dark', effect:p=>{ const bribe=20000+rnd(100000); fx(p,{money:bribe,happy:-8}); setFlag(p,'corrupt'); return `${p.first} took ${money(bribe)} to look the other way. The cost wasn't financial.`;}},
+    ]},
+  { id:'moral_charity', emoji:'🎗', title:'A cause that moves you', 
+    when:p=>p.age>=22&&p.money>30000, weight:1.6,
+    body:p=>`${p.first} hears about a cause that genuinely moves them. They could make a real difference — for a price.`,
+    choices:[
+      {label:'Donate generously', sub:'-$, +joy, +legacy', effect:p=>{ const give=Math.min(p.money,5000+rnd(30000)); fx(p,{money:-give,happy:12,fame:3}); setFlag(p,'philanthropist'); return `${p.first} gave ${money(give)}. It changed lives — including their own.`;}},
+      {label:'Volunteer your time instead', sub:'+joy', effect:p=>{ fx(p,{happy:8}); setFlag(p,'goodHeart'); return `${p.first} rolled up their sleeves and gave their time. Priceless.`;}},
+      {label:'Keep scrolling', sub:'nothing', effect:p=>{ return `${p.first} meant to help, but life got in the way.`;}},
+    ]},
+  { id:'moral_insurance', emoji:'🚗', title:'A tempting fraud', 
+    when:p=>p.age>=25&&p.assets.some(a=>a.kind==='car'||a.kind==='luxury'), weight:1.2,
+    body:p=>`${p.first}'s car is old and breaking down. A shady friend suggests "losing" it for the insurance payout.`,
+    choices:[
+      {label:'Commit the fraud', sub:'+$, illegal', effect:p=>{ if(chance(30)){ fx(p,{happy:-10}); p.record.push('Insurance fraud'); return `Investigators saw through it. ${p.first} is under investigation.`;} const payout=8000+rnd(25000); fx(p,{money:payout}); setFlag(p,'fraudster'); return `${p.first} collected ${money(payout)} in insurance money. Risky, but it worked.`;}},
+      {label:'Just sell it honestly', sub:'+integrity', effect:p=>{ const sale=2000+rnd(6000); fx(p,{money:sale,happy:2}); return `${p.first} sold the old car for ${money(sale)}. The honest way.`;}},
+    ]},
+  { id:'moral_homeless_adult', emoji:'🧣', title:'Cold night, hard choice', 
+    when:p=>p.age>=20, weight:1.5,
+    body:p=>`On a freezing night, ${p.first} passes someone with nowhere to go, shivering.`,
+    choices:[
+      {label:'Buy them a meal and coat', sub:'-$, +joy', effect:p=>{ const c=Math.min(p.money,60); fx(p,{money:-c,happy:9}); setFlag(p,'goodHeart'); return `${p.first} made sure a stranger was warm and fed tonight. It mattered more than money.`;}},
+      {label:'Hand them some cash', sub:'-$, +kind', effect:p=>{ const c=Math.min(p.money,20); fx(p,{money:-c,happy:5}); return `${p.first} gave what they could and wished them well.`;}},
+      {label:'Walk past', sub:'-conscience', effect:p=>{ fx(p,{happy:-3}); return `${p.first} kept walking, telling themselves someone else would help.`;}},
+    ]},
+  // ========== SUPERPOWER ORIGINS (rare, for anyone) ==========
+  { id:'power_accident', emoji:'⚡', title:'A freak accident', once:true,
+    when:p=>p.age>=12&&(!p.powers||!p.powers.length), weight:0.6,
+    body:p=>`A bizarre accident — a lab spill, a strange storm, something that shouldn't be possible — leaves ${p.first} changed.`,
+    choices:[
+      {label:'Embrace the change', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{happy:6}); if(pow)return `${p.first} woke up… different. They can ${pow} now. The world just shifted.`; return `${p.first} felt different, but nothing manifested.`;}},
+      {label:'Hide it, fear it', sub:'gain a power, -joy', effect:p=>{ const pow=grantPower(p); fx(p,{happy:-4}); setFlag(p,'hiddenPower'); if(pow)return `${p.first} discovered they can ${pow} — and told no one. A terrifying secret.`; return `Something stirred in ${p.first}, then went quiet.`;}},
+      {label:'Get checked by doctors', sub:'safe', effect:p=>{ fx(p,{health:4}); return `${p.first} got examined. The doctors found nothing… or so they said.`;}},
+    ]},
+  { id:'power_mentor', emoji:'🧙', title:'A mysterious mentor', once:true,
+    when:p=>p.age>=16&&p.powers&&p.powers.length>=1&&p.powers.length<4, weight:1,
+    body:p=>`A strange figure approaches ${p.first}, claiming they can unlock abilities ${p.first} never knew they had.`,
+    choices:[
+      {label:'Train under them', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{smarts:3}); if(pow)return `Through grueling training, ${p.first} unlocked a new power: ${pow}.`; return `${p.first} trained hard, but had already reached their limit.`;}},
+      {label:'Refuse the stranger', sub:'safe', effect:p=>{ fx(p,{happy:2}); return `${p.first} walked away from the offer. Some doors are better left closed.`;}},
+    ]},
+  { id:'power_artifact', emoji:'🔮', title:'An ancient artifact', once:true,
+    when:p=>p.age>=18&&(p.money>100000||p.stats.fame>30), weight:0.5,
+    body:p=>`${p.first} comes into possession of an artifact humming with impossible energy.`,
+    choices:[
+      {label:'Harness its power', sub:'gain a power, risk', effect:p=>{ if(chance(25)){ fx(p,{health:-20}); return `The artifact's power overwhelmed ${p.first}. They nearly died touching it.`;} const pow=grantPower(p); fx(p,{fame:5}); if(pow)return `The artifact bonded with ${p.first}. They can ${pow} now.`; return `${p.first} felt its power, but couldn't hold it.`;}},
+      {label:'Lock it away', sub:'safe', effect:p=>{ fx(p,{happy:2}); return `${p.first} sealed it away, unwilling to risk it.`;}},
+      {label:'Sell it to a collector', sub:'+$$$', effect:p=>{ const v=200000+rnd(2000000); fx(p,{money:v}); return `${p.first} sold the artifact for ${money(v)}. Let someone else carry that burden.`;}},
+    ]},
 ];
 function takeJobSilent(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; p._stage=0; p._stageYears=0; p.jobTitle=c.stages?c.stages[0].t:null; if((c.hero||c.evil)){ const pow=grantPower(p); if(pow) log(`${p.first} discovered a power: ${pow}.`,'big'); } }
+
+/* ============================================================
+   PRISON WORLD — a separate set of interactive events that only
+   fire while locked up. Build a rep, run rackets, even run the yard.
+   ============================================================ */
+const PRISON_EVENTS=[
+  { id:'pr_firstday', emoji:'⛓️', title:'First day inside', once:true,
+    when:p=>true, weight:5,
+    body:p=>`The gates close behind ${p.first}. The whole yard is watching the new arrival.`,
+    choices:[
+      {label:'Keep your head down', sub:'safe, low rep', effect:p=>{ fx(p,{happy:-4}); return `${p.first} stayed quiet and out of the way. Survival mode.`;}},
+      {label:'Stand tall, show no fear', sub:'+rep, risky', effect:p=>{ if(p.stats.athletic>50||chance(50)){ p.prisonRep=clamp((p.prisonRep||0)+15); fx(p,{happy:2}); return `${p.first} met every stare head-on. The yard took note.`;} fx(p,{health:-10}); return `${p.first} got tested immediately and beaten. A hard welcome.`;}},
+      {label:'Find the toughest crew', sub:'seek protection', effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)+6); setFlag(p,'prisonGang'); return `${p.first} aligned with a crew for protection. Nothing's free in here.`;}},
+    ]},
+  { id:'pr_shakedown', emoji:'💰', title:'Protection money', 
+    when:p=>(p.prisonRep||0)<60, weight:3,
+    body:p=>`A hulking inmate corners ${p.first}: pay up for "protection," or else.`,
+    choices:[
+      {label:'Pay them off', sub:'-commissary', effect:p=>{ fx(p,{money:-200,happy:-3}); return `${p.first} paid. Safe for now, but marked as a target.`;}},
+      {label:'Refuse and fight', sub:'+rep, risk', effect:p=>{ if(p.stats.athletic>55||chance(45)||(p.powers&&p.powers.length)){ p.prisonRep=clamp((p.prisonRep||0)+20); fx(p,{happy:4}); return `${p.first} dropped them in front of everyone. Nobody shakes ${p.first} down now.`;} fx(p,{health:-16}); return `${p.first} lost the fight badly. The whole block saw.`;}},
+      {label:'Report to a guard', sub:'-rep, snitch', effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)-15); setFlag(p,'snitch'); return `${p.first} told a guard. The label "snitch" is dangerous currency in here.`;}},
+    ]},
+  { id:'pr_contraband', emoji:'📦', title:'A smuggling chance', 
+    when:p=>(p.prisonRep||0)>=15, weight:3,
+    body:p=>`${p.first} is offered a cut to help move contraband through the block.`,
+    choices:[
+      {label:'Run a smuggling network', sub:'+money, +rep, risk', effect:p=>{ if(chance(25)){ p.prisonYears+=1+rnd(2); fx(p,{happy:-6}); return `${p.first} got caught. Time added, thrown in solitary.`;} const take=300+rnd(2000); fx(p,{money:take}); p.prisonRep=clamp((p.prisonRep||0)+12); setFlag(p,'prisonNetwork'); return `${p.first} now runs goods through the block — ${money(take)} and rising influence.`;}},
+      {label:'Just be a customer', sub:'small comfort', effect:p=>{ fx(p,{money:-100,happy:4}); return `${p.first} bought a few comforts to make the time easier.`;}},
+      {label:'Stay clean', sub:'+parole odds', effect:p=>{ setFlag(p,'modelInmate'); fx(p,{happy:1}); return `${p.first} kept their nose clean. The parole board likes that.`;}},
+    ]},
+  { id:'pr_education', emoji:'📚', title:'Prison education program', 
+    when:p=>true, weight:2.5,
+    body:p=>`The prison offers a chance to study — earn a degree, learn a trade, better yourself.`,
+    choices:[
+      {label:'Get your degree', sub:'+smarts, +parole', effect:p=>{ fx(p,{smarts:8}); setFlag(p,'modelInmate'); if(p.edu<2)p.edu=2; return `${p.first} hit the books hard and earned a real education inside.`;}},
+      {label:'Learn a trade', sub:'+a skill', effect:p=>{ fx(p,{smarts:4,health:2}); setFlag(p,'prisonTrade'); return `${p.first} learned a trade that'll mean a job on the outside.`;}},
+      {label:'Hit the weights instead', sub:'+athletic', effect:p=>{ fx(p,{athletic:7,health:3}); p.prisonRep=clamp((p.prisonRep||0)+5); return `${p.first} got seriously strong in the yard.`;}},
+    ]},
+  { id:'pr_riot', emoji:'🔥', title:'The yard erupts', 
+    when:p=>(p.prisonRep||0)>=10, weight:2,
+    body:p=>`A full-scale riot breaks out. Chaos everywhere. ${capFirst(p.first)} has to choose fast.`,
+    choices:[
+      {label:'Lead the riot', sub:'+big rep, +big risk', effect:p=>{ if(chance(40)){ p.prisonYears+=2+rnd(4); fx(p,{health:-12}); p.record.push('Prison riot'); return `${p.first} led the charge — and paid for it. More years, more scars.`;} p.prisonRep=clamp((p.prisonRep||0)+30); fx(p,{fame:4}); return `${p.first} led the riot and emerged a legend of the block.`;}},
+      {label:'Protect a weaker inmate', sub:'+rep, +honor', effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)+12); fx(p,{health:-6}); setFlag(p,'prisonHonor'); return `${p.first} shielded someone who couldn't defend themselves. Respect earned the right way.`;}},
+      {label:'Hide until it blows over', sub:'safe', effect:p=>{ fx(p,{happy:-4}); return `${p.first} waited it out in a supply closet. Smart, if not glorious.`;}},
+    ]},
+  { id:'pr_takeover', emoji:'👑', title:'Run the whole prison', once:true,
+    when:p=>(p.prisonRep||0)>=70&&p.prisonRole!=='shotcaller', weight:4,
+    body:p=>`${p.first}'s reputation is now towering. The old shot-caller is gone. The block could be ${p.first}'s to rule.`,
+    choices:[
+      {label:'Seize control of the yard', sub:'become the boss', effect:p=>{ p.prisonRole='shotcaller'; p.prisonRep=100; fx(p,{fame:6}); worldEvent(p,`${p.first} became the undisputed boss of the prison.`,{fear:true}); return `${p.first} runs this place now. Guards included. The throne behind bars.`;}},
+      {label:'Stay a respected loner', sub:'+peace', effect:p=>{ fx(p,{happy:4}); return `${p.first} earned respect but wanted no crown. Left alone, finally.`;}},
+    ]},
+  { id:'pr_boss_racket', emoji:'🤝', title:'Empire behind bars', 
+    when:p=>p.prisonRole==='shotcaller', weight:3,
+    body:p=>`As the one who runs the block, ${p.first} can expand the operation.`,
+    choices:[
+      {label:'Run the whole prison economy', sub:'+big money', effect:p=>{ const take=2000+rnd(8000); fx(p,{money:take}); return `${p.first}'s rackets cleared ${money(take)} this quarter. The block pays tribute.`;}},
+      {label:'Order a hit on a rival', sub:'ruthless, risk', effect:p=>{ if(chance(30)){ p.prisonYears+=5+rnd(5); p.record.push('Murder (prison)'); fx(p,{happy:-6}); return `It was traced back to ${p.first}. The sentence just got much longer.`;} p.prisonRep=100; setFlag(p,'ruthless'); return `${p.first}'s rival vanished. No one questions the boss now.`;}},
+      {label:'Corrupt a guard', sub:'+freedom inside', effect:p=>{ const c=Math.min(p.money,3000); fx(p,{money:-c}); setFlag(p,'ownsGuard'); return `${p.first} has a guard on payroll now. Cell phone, better food, looking the other way.`;}},
+    ]},
+  { id:'pr_visitor', emoji:'👨‍👩‍👧', title:'A visitor', 
+    when:p=>p.rels.some(r=>(r.kind==='Spouse'||r.kind==='Child'||r.kind==='Partner'||/Mother|Father/.test(r.kind))&&r.alive), weight:2.5,
+    body:p=>{const v=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Child'||r.kind==='Partner'||/Mother|Father/.test(r.kind))&&r.alive); return `${v.name.split(' ')[0]} has come to visit ${p.first} behind the glass.`;},
+    choices:[
+      {label:'Pour your heart out', sub:'+bond, +joy', effect:p=>{ const v=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Child'||r.kind==='Partner'||/Mother|Father/.test(r.kind))&&r.alive); if(v)v.bond=clamp(v.bond+12); fx(p,{happy:8}); return `${p.first} and ${v?v.name.split(' ')[0]:'they'} had a real moment. It helps, in here.`;}},
+      {label:'Push them away to protect them', sub:'-bond, +noble', effect:p=>{ const v=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Child'||r.kind==='Partner'||/Mother|Father/.test(r.kind))&&r.alive); if(v)v.bond=clamp(v.bond-10); fx(p,{happy:-6}); return `${p.first} told them not to come back. Better they move on, ${p.first} thinks.`;}},
+    ]},
+  { id:'pr_parole_prep', emoji:'⚖️', title:'Parole hearing approaches', 
+    when:p=>!p.lifeSentence&&p.prisonYears<=3&&p.prisonYears>0, weight:3,
+    body:p=>`${p.first} has a parole hearing coming up. How they present themselves matters.`,
+    choices:[
+      {label:'Show genuine remorse', sub:'+parole odds', effect:p=>{ if(hasFlag(p,'modelInmate')||chance(55)){ p.prisonYears=Math.max(0,p.prisonYears-2); fx(p,{happy:6}); return `The board was moved. ${p.first}'s sentence was shortened.`;} fx(p,{happy:-3}); return `The board wasn't convinced this time.`;}},
+      {label:'Stay defiant', sub:'-parole, +rep', effect:p=>{ p.prisonRep=clamp((p.prisonRep||0)+8); fx(p,{happy:1}); return `${p.first} refused to grovel. The block respects it; the board doesn't.`;}},
+    ]},
+];
+function rollPrisonEvent(p){
+  if(!p.alive || !p.inPrison) return null;
+  const pool=PRISON_EVENTS.filter(ev=>{ if(ev.once&&p.seenEvents.includes(ev.id))return false; try{return ev.when(p);}catch(e){return false;} });
+  if(!pool.length) return null;
+  let total=pool.reduce((s,e)=>s+(e.weight||1),0), r=Math.random()*total;
+  for(const ev of pool){ r-=(ev.weight||1); if(r<=0) return ev; }
+  return pool[0];
+}
+function prisonQuarterEvent(p){
+  const pool=[
+    ()=>log(`${p.first} marked another quiet day off the calendar.`,'muted'),
+    ()=>{p.stats.health=clamp(p.stats.health-2);log(`The food in here is taking its toll on ${p.first}.`,'muted');},
+    ()=>{p.stats.athletic=clamp(p.stats.athletic+3);log(`${p.first} spent the season in the weight pile.`,'good');},
+    ()=>{p.stats.happy=clamp(p.stats.happy-3);log(`The monotony wore on ${p.first} this season.`,'muted');},
+    ()=>{p.stats.smarts=clamp(p.stats.smarts+2);log(`${p.first} read everything in the prison library.`,'good');},
+  ];
+  if((p.prisonRep||0)>40) pool.push(()=>{log(`${p.first} commands real respect in the yard now.`,'good');});
+  if(hasFlag(p,'prisonNetwork')) pool.push(()=>{const t=100+rnd(600);p.money+=t;log(`${p.first}'s prison hustle brought in ${money(t)}.`,'good');});
+  pick(pool)();
+}
 
 function eventEligible(p, ev){
   if(ev.once && p.seenEvents.includes(ev.id)) return false;
@@ -2033,8 +2222,8 @@ function eventEligible(p, ev){
 }
 function rollInteractiveEvent(p){
   if(!p.alive || p.inPrison) return null;
-  // ~30% base, with early childhood (under 2) excluded
-  const base = p.age<2? 0 : 30;
+  // light internal gate; the quarter gate already paces these
+  const base = p.age<2? 0 : 70;
   if(!chance(base)) return null;
   const pool = CHOICE_EVENTS.filter(ev=>eventEligible(p,ev));
   if(!pool.length) return null;
@@ -2080,6 +2269,7 @@ function showEscapeChoice(p, done){
 }
 function escapeFree(p, how){
   p.inPrison=false; p.prisonYears=0; p.lifeSentence=false; p._yearsServed=0;
+  p.prisonRep=0; p.prisonRole=null;
   p.securityLevel=0; p.escapeAttempts=0; p._villainJailed=false;
   p.record.push('Escaped custody');
   p.stats.happy=clamp(p.stats.happy+18); p.stats.fame=clamp(p.stats.fame+10);
@@ -2434,7 +2624,16 @@ function lifeEvents(p){
              ()=>{p.stats.health=clamp(p.stats.health-10);p.stress=clamp(p.stress+15);log(`${p.first} handled a mid-air emergency. Hailed as a hero, but shaken.`,'bad');}],
       astronaut:[()=>{p.stats.fame=clamp(p.stats.fame+18);worldEvent(p,`${p.first} walked in space on a historic mission.`,{hope:true});},
                  ()=>{p.stats.health=clamp(p.stats.health-15);log(`A spacewalk went wrong. ${p.first} nearly didn't make it back.`,'bad');}],
-      nba:[()=>{p.stats.fame=clamp(p.stats.fame+10);log(`${p.first} dropped 50 points and went viral.`,'big');}],
+      nba:[()=>{p.stats.fame=clamp(p.stats.fame+10);log(`${p.first} dropped 50 points and went viral.`,'big');},
+           ()=>{if(p.stats.athletic>80&&chance(40)){p.stats.fame=clamp(p.stats.fame+25);const bonus=2000000+rnd(15000000);p.money+=bonus;setFlag(p,'nbaChamp');worldEvent(p,`${p.first} won the NBA Championship and Finals MVP.`,{hope:true});log(`🏆 ${p.first} WON THE NBA CHAMPIONSHIP! ${money(bonus)} bonus and eternal glory.`,'big');}else{p.stats.fame=clamp(p.stats.fame+8);log(`${p.first} made the All-Star team this season.`,'big');}},
+           ()=>{p.stats.health=clamp(p.stats.health-18);log(`${p.first} tore a ligament. A long, grueling rehab ahead.`,'bad');},
+           ()=>{const r=1000000+rnd(20000000);p.money+=r;log(`${p.first} signed a massive shoe deal — ${money(r)}.`,'big');}],
+      nfl:[()=>{p.stats.fame=clamp(p.stats.fame+10);log(`${p.first} made a highlight-reel play on national TV.`,'big');},
+           ()=>{if(p.stats.athletic>80&&chance(38)){p.stats.fame=clamp(p.stats.fame+25);const bonus=2000000+rnd(12000000);p.money+=bonus;setFlag(p,'superbowlChamp');worldEvent(p,`${p.first} won the Super Bowl.`,{hope:true});log(`🏆 ${p.first} WON THE SUPER BOWL! ${money(bonus)} and a ring.`,'big');}else{p.stats.fame=clamp(p.stats.fame+8);log(`${p.first} made the Pro Bowl this year.`,'big');}},
+           ()=>{p.stats.health=clamp(p.stats.health-22);log(`${p.first} took a brutal hit — concussion protocol and worse.`,'bad');}],
+      soccer:[()=>{p.stats.fame=clamp(p.stats.fame+12);log(`${p.first} scored a stunning goal seen around the world.`,'big');},
+              ()=>{if(p.stats.athletic>80&&chance(35)){p.stats.fame=clamp(p.stats.fame+28);const bonus=3000000+rnd(20000000);p.money+=bonus;setFlag(p,'soccerChamp');worldEvent(p,`${p.first} lifted the championship trophy.`,{hope:true});log(`🏆 ${p.first} WON THE LEAGUE TITLE! ${money(bonus)} richer.`,'big');}else{p.stats.fame=clamp(p.stats.fame+10);log(`${p.first} was named to the league's best XI.`,'big');}},
+              ()=>{const r=2000000+rnd(30000000);p.money+=r;log(`${p.first} transferred to a giant club — ${money(r)} signing bonus.`,'big');}],
       politician:[()=>{p.stats.fame=clamp(p.stats.fame+6);log(`${p.first} gave a speech that moved the nation.`,'good');},
                   ()=>{p.stats.fame=clamp(p.stats.fame-10);log(`A scandal rocked ${p.first}'s political career.`,'bad');}],
       restaurateur:[()=>{p.stats.fame=clamp(p.stats.fame+8);log(`${p.first}'s restaurant earned a coveted star.`,'big');}],
@@ -2606,7 +2805,7 @@ function openRelations(){
     const col=r.bond>66?'--sage':r.bond>33?'--gold':'--blood';
     const emoji=relEmoji(r);
     const isRomantic = (r.kind==='Spouse'||r.kind==='Partner') && r.alive;
-    const isPeer = /Brother|Sister|Sibling|Friend/.test(r.kind) && r.alive;
+    const isPeer = /Brother|Sister|Sibling|Friend|Spouse|Partner|Child/.test(r.kind) && r.alive;
     html+=`<div class="rel ${r.alive?'':'dead'}">
       <div class="av">${emoji}</div>
       <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind}${r.note?' · '+r.note:''}${r.alive?'':' · passed'}</div>
@@ -2669,8 +2868,21 @@ function openRelations(){
 function openPeerActions(p, r){
   closeSheet();
   const isSib=/Brother|Sister|Sibling/.test(r.kind);
+  const isRomance=/Spouse|Partner/.test(r.kind);
+  const isChild=r.kind==='Child';
   const name=r.name.split(' ')[0];
   const opts=[];
+  if(isRomance||isChild){
+    // gentler menu for spouse/partner/child
+    opts.push(O('💞','Spend quality time','+bond, +joy',0,()=>{ r.bond=clamp(r.bond+10); p.stats.happy=clamp(p.stats.happy+5); closeSheet(); log(`${p.first} spent meaningful time with ${name}.`,'good'); render(); }));
+    if(isChild && r.id!=null){ const kid=findP(G,r.id); if(kid&&kid.alive&&kid.age<18){ opts.push(O('📖','Teach them something','+their smarts, +bond',0,()=>{ kid.stats.smarts=clamp(kid.stats.smarts+3); r.bond=clamp(r.bond+6); closeSheet(); log(`${p.first} taught ${name} a thing or two about life.`,'good'); render(); })); } }
+    if(isChild){ opts.push(O('🎁','Spoil them','-$, +bond',0,()=>{ const c=Math.min(p.money,200+rnd(800)); p.money-=c; r.bond=clamp(r.bond+8); p.stats.happy=clamp(p.stats.happy+3); closeSheet(); log(`${p.first} spoiled ${name} a little. Worth every penny.`,'good'); render(); })); }
+    if(isRomance){ opts.push(O('🌹','Plan a romantic surprise','-$, +bond',0,()=>{ const c=Math.min(p.money,300+rnd(1200)); p.money-=c; r.bond=clamp(r.bond+12); p.stats.happy=clamp(p.stats.happy+6); closeSheet(); log(`${p.first} surprised ${name}. The spark is alive.`,'good'); render(); })); }
+    opts.push(O('✏️','Rename them','edit their name',0,()=>{ openRenameRel(p, r); }));
+    let html=`<div class="grab"></div><h3>${name}</h3><p class="hint">${r.kind} · bond ${Math.round(r.bond)}/100</p>`;
+    sheet(html+opts.join(''), sh=>{ bindOpts(sh); });
+    return;
+  }
   opts.push(O('🤝','Team up','+bond, +joy',0,()=>{ r.bond=clamp(r.bond+10); p.stats.happy=clamp(p.stats.happy+4); closeSheet(); log(`${p.first} and ${name} took on the world together for a while. Closer than ever.`,'good'); render(); }));
   if(p.age<=18){
     opts.push(O('🃏','Play a prank','risky fun',0,()=>{ if(chance(60)){ r.bond=clamp(r.bond+4); p.stats.happy=clamp(p.stats.happy+5); closeSheet(); log(`${p.first} pulled a harmless prank on ${name}. They both laughed.`,'good'); } else { r.bond=clamp(r.bond-8); closeSheet(); log(`The prank on ${name} went too far. They're mad at ${p.first}.`,'bad'); } render(); }));
@@ -2685,6 +2897,7 @@ function openPeerActions(p, r){
   }
   if(r.bond>=88) opts.push(OH(`You and ${name} are inseparable.`));
   else if(r.bond<=12) opts.push(OH(`You and ${name} can barely stand each other.`));
+  opts.push(O('✏️','Rename them','edit their name',0,()=>{ openRenameRel(p, r); }));
   let html=`<div class="grab"></div><h3>${name}</h3><p class="hint">${r.kind} · bond ${Math.round(r.bond)}/100</p>`;
   sheet(html+opts.join(''), sh=>{ bindOpts(sh); });
 }
@@ -2693,10 +2906,13 @@ function doBreakup(p, r){
   closeSheet();
   if(r.kind==='Spouse'){
     p.married=false; r.kind='Ex-spouse'; recordPartner(p,r,'Ex-spouse');
-    const split=Math.floor(p.money*(0.25+Math.random()*0.2));
+    // a prenup sharply reduces what the wealthier partner loses in the split
+    const rate = p.prenup ? (0.05+Math.random()*0.07) : (0.25+Math.random()*0.2);
+    const split=Math.floor(p.money*rate);
     p.money-=split;
+    p.prenup=false;
     p.stats.happy=clamp(p.stats.happy-12);
-    log(`${p.first} divorced ${r.name.split(' ')[0]}. The split cost ${money(split)}.`,'bad');
+    log(`${p.first} divorced ${r.name.split(' ')[0]}.${p.prenup?'':''} The split cost ${money(split)}${rate<0.15?' — the prenup held':''}.`,'bad');
   } else {
     // partner breakup
     r.kind='Ex'; r.alive=true;
@@ -2772,11 +2988,50 @@ function doMarry(p){
   const partner=p.rels.find(r=>r.kind==='Partner'&&r.alive);
   if(!partner)return;
   if(partner.bond<40 && chance(60)){ log(`${p.first} proposed. ${partner.name.split(' ')[0]} said no.`,'bad'); partner.bond=clamp(partner.bond-15); render(); return; }
-  partner.kind='Spouse'; partner.bond=clamp(partner.bond+15); p.married=true; p.partnerName=partner.name;
-  recordPartner(p, partner, 'Spouse');
-  const cost=4000+rnd(20000); p.money-=Math.min(p.money,cost);
-  p.stats.happy=clamp(p.stats.happy+14);
-  log(`${p.first} married ${partner.name.split(' ')[0]}. A good day.`,'big'); render();
+  // partner's wealth/profession is implied; estimate if they "out-earn" the player for prenup framing
+  const partnerWealthier = chance(40); // some partners come in with more
+  const pf=partner.name.split(' ')[0], pl=partner.name.split(' ').slice(1).join(' ')||p.last;
+  root.innerHTML=`
+  <div class="scrim center">
+    <div class="cmodal">
+      <div style="text-align:center;font-size:38px;margin-bottom:2px">💍</div>
+      <h2 style="text-align:center">Marrying ${pf}</h2>
+      <p style="text-align:center;color:var(--ink-dim);font-size:13px">A few decisions before the big day.</p>
+      <div style="margin-top:10px;font-size:12px;color:var(--ink-dim)">Surnames</div>
+      <div id="snamepick" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <button class="btn ghost snopt sel" data-s="keep" style="margin-top:0;border-color:var(--gold)">Both keep your own names</button>
+        <button class="btn ghost snopt" data-s="theirs" style="margin-top:0">${p.first} takes "${pl}"</button>
+        <button class="btn ghost snopt" data-s="mine" style="margin-top:0">${pf} takes "${p.last}"</button>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--ink-dim)">Prenuptial agreement ${partnerWealthier?'· <span style="color:var(--gold)">'+pf+' appears to be the wealthier partner</span>':''}</div>
+      <div id="prenuppick" style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn ghost propt sel" data-p="no" style="margin-top:0;flex:1;border-color:var(--gold)">No prenup</button>
+        <button class="btn ghost propt" data-p="yes" style="margin-top:0;flex:1">Sign a prenup</button>
+      </div>
+      <p id="prenote" style="font-size:11px;color:var(--ink-faint);margin-top:6px">A prenup protects each person's assets if the marriage ends — but raising it can sting.</p>
+      <button class="btn gold" id="domarry" style="margin-top:12px">Say "I do"</button>
+      <button class="btn ghost" id="cancelmarry" style="margin-top:6px">Not yet</button>
+    </div>
+  </div>`;
+  let surname='keep', prenup='no';
+  root.querySelectorAll('.snopt').forEach(b=>{ b.onclick=()=>{ surname=b.dataset.s; root.querySelectorAll('.snopt').forEach(x=>{x.classList.remove('sel');x.style.borderColor='var(--line)';}); b.classList.add('sel'); b.style.borderColor='var(--gold)'; }; });
+  root.querySelectorAll('.propt').forEach(b=>{ b.onclick=()=>{ prenup=b.dataset.p; root.querySelectorAll('.propt').forEach(x=>{x.classList.remove('sel');x.style.borderColor='var(--line)';}); b.classList.add('sel'); b.style.borderColor='var(--gold)'; }; });
+  $('#cancelmarry').onclick=()=>{ root.innerHTML=''; render(); };
+  $('#domarry').onclick=()=>{
+    root.innerHTML='';
+    partner.kind='Spouse'; partner.bond=clamp(partner.bond+15); p.married=true;
+    // surname handling
+    if(surname==='theirs'){ p.last=pl; }
+    else if(surname==='mine'){ partner.name=pf+' '+p.last; }
+    p.partnerName=partner.name;
+    // prenup
+    p.prenup = prenup==='yes';
+    if(prenup==='yes'){ partner.bond=clamp(partner.bond-6); }
+    recordPartner(p, partner, 'Spouse');
+    const cost=4000+rnd(20000); p.money-=Math.min(p.money,cost);
+    p.stats.happy=clamp(p.stats.happy+14);
+    log(`${p.first} married ${pf}${p.prenup?' (prenup signed)':''}. A good day.`,'big'); render();
+  };
 }
 function makeChild(p, opts={}){
   const csx=makeSex();
@@ -2817,7 +3072,10 @@ function doBaby(p, ivf){
   }
   const child=makeChild(p,{});
   p.stats.happy=clamp(p.stats.happy+10);
-  log(`A child was born — ${child.first} ${child.last}.`,'birth'); render();
+  const sp2=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
+  const otherLast = sp2 ? (sp2.name.split(' ').slice(1).join(' ')||null) : null;
+  log(`A child was born — ${child.first} ${child.last}.`,'birth');
+  openNameChild(p, child, otherLast);
 }
 function doAdopt(p){
   closeSheet();
@@ -2827,7 +3085,8 @@ function doAdopt(p){
   // adopted children can arrive at any age 0-10
   const child=makeChild(p,{adopted:true, age:rnd(11)});
   p.stats.happy=clamp(p.stats.happy+12);
-  log(`${p.first} adopted ${child.first}${child.age>0?`, age ${child.age}`:''}. A family, chosen.`,'birth'); render();
+  log(`${p.first} adopted ${child.first}${child.age>0?`, age ${child.age}`:''}. A family, chosen.`,'birth');
+  openNameChild(p, child, null);
 }
 
 /* ============================================================
@@ -2837,6 +3096,34 @@ function openActivities(){
   const p=me();
   let html=`<div class="grab"></div><h3>What will ${p.first} do?</h3><p class="hint">Age ${p.age} · ${money(p.money)} in purse</p>`;
   const opts=[];
+
+  // ===== PRISON MODE: a separate world of options while locked up =====
+  if(p.inPrison){
+    html=`<div class="grab"></div><h3>Life inside</h3><p class="hint">${SECURITY_NAMES[p.securityLevel||0]} · respect ${Math.round(p.prisonRep||0)}/100${p.prisonRole==='shotcaller'?' · YOU RUN THIS BLOCK':''}</p>`;
+    opts.push(OH('— Doing time —'));
+    opts.push(O('🏋️','Work out in the yard','+athletic, +rep',0,()=>{ p.stats.athletic=clamp(p.stats.athletic+4); p.stats.health=clamp(p.stats.health+2); p.prisonRep=clamp((p.prisonRep||0)+3); closeSheet(); log(`${p.first} put in serious work in the prison yard.`,'good'); render(); }));
+    opts.push(O('📚','Use the prison library','+smarts',0,()=>{ p.stats.smarts=clamp(p.stats.smarts+4); closeSheet(); log(`${p.first} spent the day reading. The mind stays free.`,'good'); render(); }));
+    opts.push(O('🤝','Build your reputation','+rep, risk',0,()=>{ closeSheet(); if(chance(70)){ p.prisonRep=clamp((p.prisonRep||0)+8); log(`${p.first} earned respect on the block.`,'good'); } else { p.stats.health=clamp(p.stats.health-8); p.prisonRep=clamp((p.prisonRep||0)+2); log(`${p.first} got into a scrap proving themselves. Bruised but tougher.`,'muted'); } render(); }));
+    if((p.prisonRep||0)>=20){
+      opts.push(OH('— The hustle —'));
+      opts.push(O('📦','Run contraband','+money, risk',0,()=>{ closeSheet(); if(chance(22)){ p.prisonYears+=1; log(`${p.first} got caught smuggling — time added.`,'bad'); } else { const t=200+rnd(1500); p.money+=t; setFlag(p,'prisonNetwork'); log(`${p.first}'s smuggling cleared ${money(t)}.`,'good'); } render(); }));
+    }
+    if(p.prisonRole==='shotcaller'){
+      opts.push(O('👑','Run the block','+big money',0,()=>{ closeSheet(); const t=2000+rnd(8000); p.money+=t; log(`Tribute from the whole prison: ${money(t)}.`,'good'); render(); }));
+    }
+    // model behavior toward parole
+    if(!p.lifeSentence){
+      opts.push(OH('— The long game —'));
+      opts.push(O('😇','Be a model inmate','+parole odds',0,()=>{ setFlag(p,'modelInmate'); p.stats.happy=clamp(p.stats.happy+2); closeSheet(); log(`${p.first} kept their record spotless. The parole board notices.`,'good'); render(); }));
+    }
+    // escape (for crime bosses / villains) still available via the yearly choice, but offer a manual attempt
+    if(canAttemptEscape(p)){
+      opts.push(OH('— Desperate measures —'));
+      opts.push(O('🪜','Plan an escape','very risky',0,()=>{ closeSheet(); showEscapeChoice(p, ()=>render()); }));
+    }
+    sheet(html+opts.join(''), sh=>bindOpts(sh));
+    return;
+  }
 
   // CORE FREE-TIME — always pinned to the very top (most-used actions)
   if(p.age>=4){
@@ -3187,26 +3474,30 @@ function openFinances(){
     </div>`);
   });
 
-  // BUSINESSES
+  // BUSINESSES (data-driven so it's easy to own a real portfolio)
   opts.push(OH('— Own a business —'));
-  if(!(p.businesses||[]).some(b=>b.kind==='casino')){
-    opts.push(O('🎰','Online casino',p.money>=250000?'$250,000 · big, risky income':`needs ${money(250000)}`,0,()=>{
-      p.money-=250000; p.businesses.push({kind:'casino',name:'Online Casino',value:250000,income:60000}); closeSheet();
-      log(`${p.first} launched an online casino. The house always wins… usually.`,'big'); render();
-    }, p.money<250000));
-  }
-  if(!(p.businesses||[]).some(b=>b.kind==='restaurant')){
-    opts.push(O('🍽','Open a restaurant',p.money>=90000?'$90,000 · steady income':`needs ${money(90000)}`,0,()=>{
-      p.money-=90000; p.businesses.push({kind:'restaurant',name:'Restaurant',value:90000,income:22000}); closeSheet();
-      log(`${p.first} opened a restaurant. The reviews will decide everything.`,'big'); render();
-    }, p.money<90000));
-  }
-  if(!(p.businesses||[]).some(b=>b.kind==='rental')){
-    opts.push(O('🏢','Buy a rental property',p.money>=140000?'$140,000 · passive rent':`needs ${money(140000)}`,0,()=>{
-      p.money-=140000; p.businesses.push({kind:'rental',name:'Rental Property',value:140000,income:14000}); closeSheet();
-      log(`${p.first} bought a rental property. Passive income, mostly.`,'good'); render();
-    }, p.money<140000));
-  }
+  const BIZ=[
+    {kind:'foodtruck', e:'🚚', name:'Food Truck',        cost:35000,  income:9000,  blurb:'small but scrappy'},
+    {kind:'laundromat',e:'🧺', name:'Laundromat',        cost:60000,  income:13000, blurb:'quiet cash machine'},
+    {kind:'restaurant',e:'🍽', name:'Restaurant',        cost:90000,  income:22000, blurb:'steady, reputation-driven'},
+    {kind:'rental',    e:'🏢', name:'Rental Property',    cost:140000, income:14000, blurb:'passive rent'},
+    {kind:'gym',       e:'🏋', name:'Gym Franchise',      cost:170000, income:30000, blurb:'memberships add up'},
+    {kind:'carwash',   e:'🚗', name:'Car Wash Chain',     cost:210000, income:36000, blurb:'rain or shine'},
+    {kind:'casino',    e:'🎰', name:'Online Casino',      cost:250000, income:60000, blurb:'big, risky income'},
+    {kind:'brewery',   e:'🍺', name:'Craft Brewery',      cost:300000, income:48000, blurb:'trendy margins'},
+    {kind:'hotel',     e:'🏨', name:'Boutique Hotel',     cost:600000, income:95000, blurb:'prestige and profit'},
+    {kind:'techco',    e:'💻', name:'Tech Startup',       cost:500000, income:120000,blurb:'high risk, high reward'},
+    {kind:'vineyard',  e:'🍷', name:'Vineyard',           cost:850000, income:110000,blurb:'old-money income'},
+    {kind:'sportsteam',e:'🏟', name:'Pro Sports Team',    cost:5000000,income:700000,blurb:'a billionaire\'s toy'},
+  ];
+  BIZ.forEach(b=>{
+    if(!(p.businesses||[]).some(x=>x.kind===b.kind)){
+      opts.push(O(b.e,b.name,p.money>=b.cost?`${money(b.cost)} · ${b.blurb}`:`needs ${money(b.cost)}`,0,()=>{
+        p.money-=b.cost; p.businesses.push({kind:b.kind,name:b.name,value:b.cost,income:b.income}); closeSheet();
+        log(`${p.first} acquired ${b.name}. ${money(b.income)}/yr if it goes well.`,'big'); render();
+      }, p.money<b.cost));
+    }
+  });
   (p.businesses||[]).forEach((b,i)=>{
     opts.push(O('💼',`Sell ${b.name}`,`worth ${money(b.value)}`,0,()=>{
       p.money+=b.value; p.businesses.splice(i,1); closeSheet();
@@ -3217,10 +3508,12 @@ function openFinances(){
   // LUXURY
   opts.push(OH('— Luxury & lifestyle —'));
   [['🏝','Private island','luxury',2500000],['🛥','Yacht','luxury',900000],['🚁','Helicopter','luxury',1200000],
-   ['🏎','Supercar','car',300000],['🚐','Luxury RV','luxury',180000],['💎','Fine jewelry','luxury',60000]].forEach(([ic,nm,kind,price])=>{
+   ['🏎','Supercar','car',300000],['🚐','Luxury RV','luxury',180000],['💎','Fine jewelry','luxury',60000],
+   ['🎨','Art collection','luxury',450000],['⌚','Luxury watch collection','luxury',120000],['🐎','Racehorse','luxury',350000],
+   ['✈️','Private jet','luxury',8000000],['🏰','Countryside estate','luxury',3500000],['🏍','Custom motorcycle','car',90000]].forEach(([ic,nm,kind,price])=>{
     opts.push(O(ic,nm,p.money>=price?`${money(price)} · +joy, status`:`needs ${money(price)}`,0,()=>{
       p.money-=price; p.assets.push({kind,name:nm,value:Math.round(price*0.8),year:G.year}); p.stats.happy=clamp(p.stats.happy+10); closeSheet();
-      log(`${p.first} bought ${nm.toLowerCase()=='fine jewelry'?'fine jewelry':'a '+nm.toLowerCase()}. Pure indulgence.`,'big'); render();
+      log(`${p.first} acquired ${nm.toLowerCase().match(/^(a|an|the)\b/)?nm.toLowerCase():'a '+nm.toLowerCase()}. Pure indulgence.`,'big'); render();
     }, p.money<price));
   });
 
@@ -3370,6 +3663,7 @@ function openSelf(){
     ${p.henchman?`<br><span style="color:var(--gold)">Henchman: ${p.henchman.name} (loyalty ${Math.round(p.henchman.loyalty)})</span>`:''}
     ${p.job==='villain'&&p.heat?`<br><span style="color:var(--blood)">Heat: ${p.heat} 🔥</span>`:''}
     ${p.inPrison&&p.securityLevel?`<br><span style="color:var(--blood)">Held in ${SECURITY_NAMES[p.securityLevel]}</span>`:''}
+    ${p.inPrison&&(p.prisonRep||0)>0?`<br><span style="color:var(--gold)">Prison respect: ${Math.round(p.prisonRep)}/100${p.prisonRole==='shotcaller'?' · runs the block 👑':''}</span>`:''}
     ${p.citizenship&&p.citizenship!==(G.hometown||'').split(', ')[1]?`<br>Citizen of ${p.citizenship}`:''}
     ${p.orientation&&p.orientation!=='straight'?`<br>Orientation: ${p.orientation==='gay'?(p.sex==='f'?'lesbian':'gay'):'bisexual'}`:''}
     ${p.inPrison?`<br><span style="color:var(--blood)">In prison — ${p.lifeSentence?'LIFE sentence':p.prisonYears+' year(s) left'}</span>`:''}
@@ -3437,6 +3731,68 @@ function openRename(p){
     p.first=nf; p.last=nl; root.innerHTML=''; log(`Name changed to ${nf} ${nl}.`,'muted'); render();
   };
   $('#rcancel').onclick=()=>{ root.innerHTML=''; };
+}
+// Rename a relationship entry (partner, child, friend, sibling). Updates the linked person if any.
+function openRenameRel(p, r){
+  closeSheet();
+  const parts=(r.name||'').split(' ');
+  const cf=parts[0]||'', cl=parts.slice(1).join(' ')||'';
+  root.innerHTML=`
+  <div class="scrim center">
+    <div class="cmodal">
+      <h2>Rename ${r.kind.toLowerCase()}</h2>
+      <p>Edit how this person is named in ${p.first}'s life.</p>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input class="txt" id="nf" value="${cf}" placeholder="First" style="margin-top:0">
+        <input class="txt" id="nl" value="${cl}" placeholder="Last" style="margin-top:0">
+      </div>
+      <button class="btn gold" id="nsave">Save</button>
+      <button class="btn ghost" id="ncancel">Cancel</button>
+    </div>
+  </div>`;
+  $('#nsave').onclick=()=>{
+    const nf=($('#nf').value||'').trim()||cf, nl=($('#nl').value||'').trim()||cl;
+    const full=(nf+' '+nl).trim();
+    r.name=full;
+    // if this relationship links to a real person in the world, update them too
+    if(r.id!=null){ const linked=findP(G,r.id); if(linked){ linked.first=nf; if(nl)linked.last=nl; } }
+    root.innerHTML=''; render();
+  };
+  $('#ncancel').onclick=()=>{ root.innerHTML=''; render(); };
+}
+// When a child is born, let the player name them and pick a surname.
+function openNameChild(parent, child, otherLast, cb){
+  const sx=child.sex;
+  const partnerLast = otherLast && otherLast!==parent.last ? otherLast : null;
+  root.innerHTML=`
+  <div class="scrim center">
+    <div class="cmodal">
+      <div style="text-align:center;font-size:38px;margin-bottom:4px">${sx==='f'?'👶':'👶'}</div>
+      <h2 style="text-align:center">A child is born</h2>
+      <p style="text-align:center">Name ${parent.first}'s ${sx==='f'?'daughter':'son'}.</p>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input class="txt" id="cf" value="${child.first}" placeholder="First name" style="margin-top:0">
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--ink-dim)">Surname</div>
+      <div id="lastpick" style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn ghost lastopt sel" data-l="${parent.last}" style="margin-top:0;flex:1;border-color:var(--gold)">${parent.last}<br><span style="font-size:10px;color:var(--ink-dim)">your name</span></button>
+        ${partnerLast?`<button class="btn ghost lastopt" data-l="${partnerLast}" style="margin-top:0;flex:1">${partnerLast}<br><span style="font-size:10px;color:var(--ink-dim)">partner's name</span></button>`:''}
+        ${partnerLast?`<button class="btn ghost lastopt" data-l="${parent.last}-${partnerLast}" style="margin-top:0;flex:1">${parent.last}-${partnerLast}<br><span style="font-size:10px;color:var(--ink-dim)">hyphenated</span></button>`:''}
+      </div>
+      <button class="btn gold" id="cdone" style="margin-top:12px">Welcome them</button>
+    </div>
+  </div>`;
+  let chosenLast=parent.last;
+  root.querySelectorAll('.lastopt').forEach(b=>{ b.onclick=()=>{ chosenLast=b.dataset.l; root.querySelectorAll('.lastopt').forEach(x=>{x.classList.remove('sel');x.style.borderColor='var(--line)';}); b.classList.add('sel'); b.style.borderColor='var(--gold)'; }; });
+  $('#cdone').onclick=()=>{
+    const nf=($('#cf').value||'').trim()||child.first;
+    child.first=nf; child.last=chosenLast;
+    // update the relationship entry on the parent
+    const rel=parent.rels.find(r=>r.id===child.id); if(rel) rel.name=child.first+' '+child.last;
+    root.innerHTML='';
+    if(cb)cb();
+    render();
+  };
 }
 
 /* ============================================================
