@@ -861,6 +861,7 @@ function buildActions(){
   const acts=[
     {ico:'👪',l:'People',fn:openRelations},
     {ico:'🎯',l:'Do',fn:openActivities},
+    {ico:'💼',l:'Career',fn:openCareer},
     {ico:'💰',l:'Money',fn:openFinances},
     {ico:'🩺',l:'Health',fn:openHealth},
     {ico:'🧠',l:'Self',fn:openSelf},
@@ -961,6 +962,15 @@ function resolveFight(p, prep, isUFC){
   else if(prep==='study'){ edge=16; }
   else if(prep==='rest'){ p.stats.health=clamp(p.stats.health+3); edge=6; }
   else if(prep==='promo'){ p.stats.fame=clamp(p.stats.fame+6); edge=4; }
+  if(hasFlag(p,'trainedByLegend')) edge+=6;
+  if(hasFlag(p,'juicing')){
+    edge+=10;
+    // random in-competition drug test; smart fighters evade it
+    if(!(p.stats.smarts>65) && chance(12)){
+      clearFlag(p,'juicing'); p.stats.fame=clamp(p.stats.fame-15); p.record.push('Failed drug test'); p.salary=Math.round(p.salary*0.6);
+      log(`${p.first} failed a post-fight drug test. Result overturned, suspended.`,'bad');
+    }
+  }
   if(!p.fightRecord) p.fightRecord={w:0,l:0};
   const rec=p.fightRecord;
   if(isUFC){
@@ -3164,6 +3174,155 @@ function doAdopt(p){
 /* ============================================================
    ACTIVITIES PANEL  (jobs, school, fun, crime, etc)
    ============================================================ */
+/* ============================================================
+   CAREER TAB — status, advancement, and per-profession choices
+   ============================================================ */
+// Per-profession interactive choices. Each builds option buttons via O().
+// Keyed by career k; given (p, opts, push) where push(O(...)) appends.
+const CAREER_CHOICES = {
+  ufc: (p)=>[
+    O('🥋','Learn from a legend','+athletic, +skill',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+6); setFlag(p,'trainedByLegend'); log(`${p.first} trained under a retired champion. Their technique leveled up.`,'good'); render(); }),
+    O('💉','Take steroids','+athletic, risky',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+12);
+      // smart fighters know how to beat the testing
+      const caught = !(p.stats.smarts>65) && chance(40);
+      if(caught){ p.stats.fame=clamp(p.stats.fame-15); p.record.push('Failed drug test'); p.salary=Math.round(p.salary*0.5); log(`${p.first} failed a drug test. Suspended, fined, and disgraced.`,'bad'); }
+      else { setFlag(p,'juicing'); log(`${p.first} started a hidden PED cycle.${p.stats.smarts>65?' Smart enough to time it around the tests.':''} Stronger than ever.`,'muted'); }
+      render(); }),
+    O('🎤','Trash-talk to build hype','+fame, risk',0,()=>{ closeSheet(); if(chance(70)){ p.stats.fame=clamp(p.stats.fame+10); log(`${p.first}'s pre-fight trash talk went viral. The whole division wants a piece.`,'good'); } else { p.stats.fame=clamp(p.stats.fame+2); log(`${p.first} tried to start beef. It fell flat.`,'muted'); } render(); }),
+  ],
+  wwe: (p)=>[
+    O('🎭','Develop a new gimmick','+fame',0,()=>{ closeSheet(); if(chance(60)){ p.stats.fame=clamp(p.stats.fame+12); log(`${p.first}'s new character is over with the crowd. Merch is flying.`,'good'); } else { p.stats.fame=clamp(p.stats.fame-2); log(`The new gimmick flopped. Back to the drawing board.`,'muted'); } render(); }),
+    O('💉','Take steroids','+physique, risky',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+10); p.stats.looks=clamp(p.stats.looks+4); if(!(p.stats.smarts>65)&&chance(35)){ p.record.push('Wellness policy violation'); p.stats.fame=clamp(p.stats.fame-10); log(`${p.first} got popped for the wellness policy. Suspended.`,'bad'); } else { setFlag(p,'juicing'); log(`${p.first} bulked up fast on a quiet cycle.`,'muted'); } render(); }),
+    O('🩹','Wrestle through an injury','+respect, −health',0,()=>{ closeSheet(); p.stats.health=clamp(p.stats.health-10); p.stats.fame=clamp(p.stats.fame+6); log(`${p.first} refused to miss the show, working hurt. The locker room respects it.`,'good'); render(); }),
+  ],
+  boxer: (p)=>[
+    O('🥋','Hire an elite trainer','-$, +skill',0,()=>{ closeSheet(); const c=Math.min(p.money,20000); p.money-=c; p.stats.athletic=clamp(p.stats.athletic+7); log(`${p.first} brought in a world-class trainer. The footwork is crisp now.`,'good'); render(); }),
+    O('💉','Take PEDs','+power, risky',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+11); if(!(p.stats.smarts>65)&&chance(40)){ p.record.push('Failed drug test'); p.stats.fame=clamp(p.stats.fame-12); log(`${p.first} failed the commission's test. The win was overturned.`,'bad'); } else { setFlag(p,'juicing'); log(`${p.first} quietly juiced for the next bout.`,'muted'); } render(); }),
+    O('💰','Call out a big-name fighter','+fame, +purse',0,()=>{ closeSheet(); if(chance(55)){ p.stats.fame=clamp(p.stats.fame+14); const purse=50000+rnd(2000000); p.money+=purse; log(`${p.first} landed a megafight callout — ${money(purse)} payday and stardom.`,'big'); } else { log(`Nobody bit on ${p.first}'s callout. Yet.`,'muted'); } render(); }),
+  ],
+  professor: (p)=>[
+    O('📚','Publish research','+reputation, +tenure odds',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+4); setFlag(p,'published'); if(chance(40)){ p.stats.fame=clamp(p.stats.fame+5); log(`${p.first}'s paper made waves in the field. Tenure looks closer.`,'good'); } else log(`${p.first} published another solid paper. The work compounds.`,'good'); render(); }),
+    O('🎓','Campaign to become Dean','+power play',0,()=>{ closeSheet(); const odds=30+(p.stats.smarts>70?20:0)+(hasFlag(p,'published')?20:0)+(p.stats.charming>55?10:0); if(chance(odds)){ p.jobTitle='Dean'; p.salary=Math.round(p.salary*1.5); p.stats.fame=clamp(p.stats.fame+10); setFlag(p,'dean'); log(`${p.first} was appointed Dean of the faculty. A seat of real power.`,'big'); } else log(`${p.first}'s bid for Dean fell short this time. Keep building support.`,'muted'); render(); }),
+    O('🍎','Mentor a star student','+joy, +legacy',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+8); if(chance(30))setFlag(p,'mentor'); log(`${p.first} guided a brilliant student to greatness. Teaching at its best.`,'good'); render(); }),
+    O('💸','Take a corporate consulting gig','+$, −focus',0,()=>{ closeSheet(); const fee=20000+rnd(80000); p.money+=fee; p.stats.fame=clamp(p.stats.fame-2); log(`${p.first} consulted on the side for ${money(fee)}. The department grumbles.`,'muted'); render(); }),
+  ],
+  doctor: (p)=>[
+    O('🔬','Specialize in a lucrative field','+salary',0,()=>{ closeSheet(); p.salary=Math.round(p.salary*1.3); p.stats.smarts=clamp(p.stats.smarts+4); setFlag(p,'specialist'); log(`${p.first} completed a specialty fellowship. The income jumped.`,'big'); render(); }),
+    O('🏥','Volunteer at a free clinic','+joy, +reputation',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+8); setFlag(p,'goodHeart'); log(`${p.first} gave their weekends to patients who had nowhere else. It matters.`,'good'); render(); }),
+    O('💊','Overprescribe for kickbacks','+$, unethical, risky',0,()=>{ closeSheet(); if(chance(30)){ p.record.push('Medical fraud'); p.stats.fame=clamp(p.stats.fame-15); if(chance(40)){p.inPrison=true;p.prisonYears=2+rnd(3);endJob(p);} log(`${p.first} got investigated for fraud. Career-threatening.`,'bad'); } else { const kick=30000+rnd(120000); p.money+=kick; setFlag(p,'corrupt'); log(`${p.first} took ${money(kick)} in pharma kickbacks. Nobody's checking… yet.`,'muted'); } render(); }),
+  ],
+  lawyer: (p)=>[
+    O('⚖️','Take on a high-profile case','+fame, +$',0,()=>{ closeSheet(); if(chance(60)){ const fee=50000+rnd(500000); p.money+=fee; p.stats.fame=clamp(p.stats.fame+10); log(`${p.first} won a headline case — ${money(fee)} and front-page fame.`,'big'); } else { p.stats.fame=clamp(p.stats.fame-5); log(`${p.first} lost a very public case. Ouch.`,'bad'); } render(); }),
+    O('🤝','Make partner','+power, +salary',0,()=>{ closeSheet(); const odds=35+(p.jobYears>8?25:0)+(p.stats.charming>55?15:0); if(chance(odds)){ p.jobTitle='Partner'; p.salary=Math.round(p.salary*1.8); setFlag(p,'partner'); log(`${p.first} made partner at the firm. Name on the door.`,'big'); } else log(`${p.first} was passed over for partner this cycle.`,'muted'); render(); }),
+    O('🕵️','Defend a guilty client for a fortune','+$, unethical',0,()=>{ closeSheet(); const fee=100000+rnd(900000); p.money+=fee; p.stats.happy=clamp(p.stats.happy-4); setFlag(p,'morallyGray'); log(`${p.first} got a guilty client off and pocketed ${money(fee)}. Justice is complicated.`,'muted'); render(); }),
+  ],
+  tech: (p)=>[
+    O('🚀','Push for a promotion','+salary',0,()=>{ closeSheet(); if(chance(55)){ p.salary=Math.round(p.salary*1.25); p.stats.fame=clamp(p.stats.fame+2); log(`${p.first} got promoted. Bigger title, bigger paycheck.`,'good'); } else log(`${p.first}'s promotion case didn't land this cycle.`,'muted'); render(); }),
+    O('💡','Build a side project','maybe strike gold',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+3); if(chance(20)){ const exit=100000+rnd(3000000); p.money+=exit; log(`${p.first}'s side project got acquired — ${money(exit)}!`,'big'); } else log(`${p.first} shipped a side project. Good for the résumé, if nothing else.`,'good'); render(); }),
+    O('🏢','Jump to a rival for more pay','+salary, −stability',0,()=>{ closeSheet(); p.salary=Math.round(p.salary*1.35); p.stats.stress=clamp((p.stress||0)+8); log(`${p.first} job-hopped to a competitor for a fat raise.`,'good'); render(); }),
+  ],
+  popstar: (p)=>[
+    O('🎬','Cross over into acting','+fame',0,()=>{ closeSheet(); if(chance(50)){ const deal=200000+rnd(3000000); p.money+=deal; p.stats.fame=clamp(p.stats.fame+12); log(`${p.first} crossed over to film — ${money(deal)} and new fans.`,'big'); } else log(`${p.first}'s acting debut got panned. Stick to music?`,'muted'); render(); }),
+    O('🌍','Launch a world tour','-$ upfront, big payoff',0,()=>{ closeSheet(); const cost=Math.min(p.money,200000); p.money-=cost; if(chance(70)){ const gross=cost+1000000+rnd(20000000); p.money+=gross; p.stats.fame=clamp(p.stats.fame+15); p.stats.health=clamp(p.stats.health-8); log(`${p.first}'s world tour grossed ${money(gross)}. Exhausting and glorious.`,'big'); } else log(`The tour undersold and lost money. Brutal.`,'bad'); render(); }),
+    O('🍾','Embrace the rockstar lifestyle','+joy, addiction risk',0,()=>{ closeSheet(); p.stats.happy=clamp(p.stats.happy+8); if(chance(40))addAddiction(p,pick(['alcohol','cocaine','party_drugs'])); log(`${p.first} lived the rockstar dream — all night, every night.`,'muted'); render(); }),
+  ],
+  politician: (p)=>[
+    O('🗳','Run for higher office','+power',0,()=>{ closeSheet(); const odds=30+(p.stats.fame>40?25:0)+(p.stats.charming>60?20:0)+(p.money>500000?10:0); if(chance(odds)){ p.jobTitle='Senator'; p.salary=Math.round(p.salary*1.4); p.stats.fame=clamp(p.stats.fame+15); log(`${p.first} won the election and climbed to higher office.`,'big'); } else log(`${p.first} lost the race. Politics is brutal.`,'bad'); render(); }),
+    O('🤝','Take corporate donations','+$, owes favors',0,()=>{ closeSheet(); const don=100000+rnd(900000); p.money+=don; setFlag(p,'boughtPolitician'); log(`${p.first} accepted ${money(don)} in "donations." Strings attached.`,'muted'); render(); }),
+    O('📜','Champion a popular bill','+fame',0,()=>{ closeSheet(); p.stats.fame=clamp(p.stats.fame+8); setFlag(p,'goodHeart'); worldEvent(p,`${p.first} passed landmark legislation that helped millions.`,{hope:true}); log(`${p.first}'s signature bill passed. A legacy in the making.`,'good'); render(); }),
+  ],
+};
+// careers that share a choice set
+CAREER_CHOICES.judge = CAREER_CHOICES.lawyer;
+CAREER_CHOICES.musician = CAREER_CHOICES.popstar;
+CAREER_CHOICES.moviestar = CAREER_CHOICES.popstar;
+
+function openCareer(){
+  const p=me();
+  const c=CAREER(p.job);
+  let html=`<div class="grab"></div><h3>${p.first}'s career</h3>`;
+  const opts=[];
+
+  if(p.inPrison){
+    html+=`<p class="hint">No career behind bars — see the Do tab for prison life.</p>`;
+    sheet(html+opts.join(''), sh=>bindOpts(sh));
+    return;
+  }
+
+  if(p.age<18 && !p._college){
+    html+=`<p class="hint">Career options open up at 18. For now, focus on school and growing up.</p>`;
+    // still allow part-time gigs from here for teens
+    if(p.age>=13){
+      if(!p.partTime){
+        opts.push(OH('— Part-time gig —'));
+        [['🍔','Fast food',9000],['🛒','Grocery bagger',8000],['📰','Paper route',5000],['🐕','Dog walker',6000],['💻','Online freelance',12000]].forEach(([ic,nm,pay])=>{
+          opts.push(O(ic,nm,`~${money(pay)}/yr · builds savings`,0,()=>{p.partTime={name:nm,pay};closeSheet();log(`${p.first} picked up work as a ${nm.toLowerCase()}.`,'good');render();}));
+        });
+      } else {
+        opts.push(O('🧺','Quit part-time job',p.partTime.name,0,()=>{closeSheet();log(`${p.first} quit the ${p.partTime.name.toLowerCase()} job.`,'muted');p.partTime=null;render();}));
+      }
+    }
+    sheet(html+opts.join(''), sh=>bindOpts(sh));
+    return;
+  }
+
+  if(p.job==='none'){
+    html+=`<p class="hint">${p.first} isn't working right now. Time to find a path.</p>`;
+    opts.push(OH('— Find a career —'));
+    CAREERS.filter(c=>c.k!=='none').forEach(c=>{
+      const eduGate = p.edu < c.edu;
+      const athGate = (c.k==='nba' && p.stats.athletic<82) || (c.k==='soccer' && p.stats.athletic<80) || (c.athGate && p.stats.athletic<c.athGate);
+      const looksGate = c.looksGate && p.stats.looks < c.looksGate;
+      const dis = eduGate || athGate || looksGate;
+      let sub;
+      if(athGate) sub='needs athleticism '+(c.athGate||80)+'+';
+      else if(looksGate) sub=`needs looks ${c.looksGate}+`;
+      else if(eduGate) sub=`needs ${EDU[c.edu]}`;
+      else if(c.staged) sub=`climb from ${c.stages[0].t} to the top`;
+      else sub = c.wild?'a long shot — high ceiling':`~${money(c.base)} to start`;
+      opts.push(O(c.emoji,c.l,sub,0,()=>takeJob(p,c.k),dis));
+    });
+    sheet(html+opts.join(''), sh=>bindOpts(sh));
+    return;
+  }
+
+  // EMPLOYED — show status + advancement + per-profession choices
+  const title = p.jobTitle ? p.jobTitle : c.l;
+  html+=`<div style="padding:4px 20px 10px">
+    <div style="font-size:13px;color:var(--ink-dim)">${c.emoji} ${c.l}</div>
+    <div style="font-size:20px;font-weight:600;margin:2px 0">${title}</div>
+    <div style="font-size:13px;color:var(--gold)">${money(p.salary)}/yr · ${p.jobYears||0} yr${(p.jobYears||0)===1?'':'s'} in</div>
+    ${c.staged && p._stage!=null && c.stages[p._stage+1] ? `<div style="font-size:11.5px;color:var(--ink-faint);margin-top:3px">Next: ${c.stages[p._stage+1].t}${c.stages[p._stage+1].req?` · needs ${c.keyStat||'smarts'} ${c.stages[p._stage+1].req}+ (you: ${Math.round(p.stats[c.keyStat||'smarts'])})`:''}</div>`:''}
+  </div>`;
+
+  // staged training / lay-low
+  if(c.staged && p._stage!=null){
+    if(c.crime){
+      opts.push(OH('— The life —'));
+      opts.push(O('🤫','Lay low this year','cut the heat, less income',0,()=>{ p.salary=Math.round(p.salary*0.4); p._layLow=true; closeSheet(); log(`${p.first} kept a low profile, taking fewer risks.`,'muted'); render(); }));
+    } else {
+      const key=c.keyStat||'smarts';
+      opts.push(OH('— Advancement —'));
+      opts.push(O('🔥','Train hard',`+${key}, costs health & joy`,0,()=>{ p.stats[key]=clamp(p.stats[key]+4+rnd(3)); p.stats.health=clamp(p.stats.health-3); p.stats.happy=clamp(p.stats.happy-3); p.stress=clamp((p.stress||0)+6); closeSheet(); log(`${p.first} trained relentlessly. ${capFirst(key)} is sharper.`,'good'); render(); }));
+    }
+  }
+
+  // PER-PROFESSION CHOICES
+  const choiceFn = CAREER_CHOICES[p.job];
+  if(choiceFn){
+    opts.push(OH(`— ${c.l} decisions —`));
+    choiceFn(p).forEach(o=>opts.push(o));
+  }
+
+  // generic work actions
+  opts.push(OH('— On the job —'));
+  opts.push(O('💼','Work harder this year','+pay odds, −health',0,()=>{p.stats.happy=clamp(p.stats.happy-4);p.stats.health=clamp(p.stats.health-3);if(chance(45)){const b=Math.round(p.salary*0.12);p.money+=b;closeSheet();log(`${p.first} grinded and pocketed a ${money(b)} bonus.`,'good');render();}else{closeSheet();log(`${p.first} worked hard. Nobody noticed.`,'muted');render();}}));
+  opts.push(O('💬','Ask for a raise','+salary maybe',0,()=>{ closeSheet(); const odds=40+(p.jobYears>3?15:0)+(p.stats.charming>55?15:0); if(chance(odds)){ const r=Math.round(p.salary*(0.08+Math.random()*0.12)); p.salary+=r; log(`${p.first} negotiated a ${money(r)} raise.`,'good'); } else log(`The boss said "maybe next year." ${p.first} fumed.`,'muted'); render(); }));
+  opts.push(O('🚪','Quit this job','walk away',0,()=>{closeSheet();endJob(p,`${p.first} quit. Free, for now.`);render();}));
+
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+
 function openActivities(){
   const p=me();
   let html=`<div class="grab"></div><h3>What will ${p.first} do?</h3><p class="hint">Age ${p.age} · ${money(p.money)} in purse</p>`;
@@ -3270,48 +3429,14 @@ function openActivities(){
     }
   }
 
-  // WORK
+  // WORK — now lives in the dedicated Career tab
   if(p.age>=18){
+    opts.push(OH('— Work —'));
     if(p.job==='none'){
-      opts.push(OH('— Find a career —'));
-      CAREERS.filter(c=>c.k!=='none').forEach(c=>{
-        const eduGate = p.edu < c.edu;
-        const athGate = (c.k==='nba' && p.stats.athletic<82) || (c.k==='soccer' && p.stats.athletic<80) || (c.athGate && p.stats.athletic<c.athGate);
-        const looksGate = c.looksGate && p.stats.looks < c.looksGate;
-        const dis = eduGate || athGate || looksGate;
-        let sub;
-        if(athGate) sub='needs athleticism '+(c.athGate||80)+'+';
-        else if(looksGate) sub=`needs looks ${c.looksGate}+`;
-        else if(eduGate) sub=`needs ${EDU[c.edu]}`;
-        else if(c.staged) sub=`climb from ${c.stages[0].t} to the top`;
-        else sub = c.wild?'a long shot — high ceiling':`~${money(c.base)} to start`;
-        opts.push(O(c.emoji,c.l,sub,0,()=>takeJob(p,c.k),dis));
-      });
+      opts.push(O('💼','Find a career','browse jobs in the Career tab',0,()=>{ closeSheet(); openCareer(); }));
     } else {
       const c=CAREER(p.job);
-      const header = c.staged && p._stage!=null ? `— ${c.l}: ${c.stages[p._stage].t} —` : `— ${c.l} —`;
-      opts.push(OH(header));
-      if(c.staged && p._stage!=null){
-        const next=c.stages[p._stage+1];
-        if(c.crime){
-          if(next){ opts.push(OH(`next: ${next.t} · climb by surviving & staying sharp`)); }
-          else { opts.push(OH(`at the top — but the heat never stops`)); }
-          opts.push(O('🤫','Lay low this year','cut the heat, less income',0,()=>{
-            p.salary=Math.round(p.salary*0.4); p._layLow=true; closeSheet(); log(`${p.first} kept a low profile, taking fewer risks.`,'muted'); render();
-          }));
-        } else {
-          if(next){ const key=c.keyStat||'smarts'; const have=Math.round(p.stats[key]);
-            opts.push(OH(`next: ${next.t} · needs ${key} ${next.req}+ (you: ${have})`));
-          } else { opts.push(OH(`at the very top of the game`)); }
-          const key=c.keyStat||'smarts';
-          opts.push(O('🔥','Train hard',`+${key}, costs health & joy`,0,()=>{
-            p.stats[key]=clamp(p.stats[key]+4+rnd(3)); p.stats.health=clamp(p.stats.health-3); p.stats.happy=clamp(p.stats.happy-3); p.stress=clamp(p.stress+6);
-            closeSheet(); log(`${p.first} trained relentlessly. ${capFirst(key)} is sharper.`,'good'); render();
-          }));
-        }
-      }
-      opts.push(O('💼','Work harder this year','+pay odds, −health',0,()=>{p.stats.happy=clamp(p.stats.happy-4);p.stats.health=clamp(p.stats.health-3);if(chance(45)){const b=Math.round(p.salary*0.12);p.money+=b;closeSheet();log(`${p.first} grinded and pocketed a ${money(b)} bonus.`,'good');render();}else{closeSheet();log(`${p.first} worked hard. Nobody noticed.`,'muted');render();}}));
-      opts.push(O('🚪','Quit this job','walk away',0,()=>{closeSheet();endJob(p,`${p.first} quit. Free, for now.`);render();}));
+      opts.push(O('💼',`Manage your career`,`${p.jobTitle||c.l} · open the Career tab`,0,()=>{ closeSheet(); openCareer(); }));
     }
   }
 
