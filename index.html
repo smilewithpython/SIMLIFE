@@ -499,6 +499,44 @@ function grantPower(p){
   const pow=pick(avail); p.powers.push(pow);
   return pow;
 }
+function hasPower(p,name){ return p.powers && p.powers.includes(name); }
+// Which powers give a meaningful edge in which careers, and a short flavor line.
+// Each entry: power -> { careers:[...], stat?:statToBoost, line:(p)=>flavor }
+const POWER_CAREER = {
+  'telepathy':       { careers:['lawyer','judge','politician','agent','tech','realtor','accountant','analyst','corporate','doctor','founder','aistartup','crimelord'], line:p=>`reads every room and never gets blindsided` },
+  'mind control':    { careers:['lawyer','judge','politician','agent','realtor','model','actor','moviestar','crimelord','founder','aistartup'], line:p=>`bends others to their will when it counts` },
+  'super strength':  { careers:['nba','nfl','soccer','ufc','boxer','wwe','soldier','cop','firefighter','farmer','mechanic'], line:p=>`overpowers any physical challenge` },
+  'super speed':     { careers:['nba','nfl','soccer','ufc','boxer','wwe','soldier','cop','firefighter','driver','trucker','pilot'], line:p=>`moves faster than anyone can react` },
+  'regeneration':    { careers:['ufc','boxer','wwe','nfl','soldier','cop','firefighter','astronaut','stuntman'], line:p=>`shrugs off injuries that would end careers` },
+  'flight':          { careers:['pilot','soldier','cop','firefighter','astronaut','model','actor'], line:p=>`does the impossible in the air` },
+  'telekinesis':     { careers:['engineer','tech','doctor','mechanic','electrician','plumber','chef','scientist','madsci','astronaut'], line:p=>`manipulates the physical world with a thought` },
+  'technopathy':     { careers:['tech','aistartup','founder','engineer','esports','agent','scientist','accountant','analyst'], line:p=>`speaks to machines directly` },
+  'time manipulation':{ careers:['tech','aistartup','founder','scientist','madsci','analyst','accountant','nba','nfl','soccer','ufc','esports','realtor'], line:p=>`always has all the time in the world` },
+  'energy blasts':   { careers:['soldier','cop','ufc','boxer','wwe'], line:p=>`ends confrontations instantly` },
+  'laser vision':    { careers:['soldier','cop','engineer','doctor','mechanic'], line:p=>`brings impossible precision` },
+  'invisibility':    { careers:['agent','crimelord','cop','model'], line:p=>`goes anywhere unseen` },
+  'shapeshifting':   { careers:['actor','moviestar','agent','model','crimelord','politician'], line:p=>`becomes anyone the role demands` },
+  'elemental control':{ careers:['firefighter','farmer','soldier','scientist','madsci'], line:p=>`commands the elements` },
+  'weather control': { careers:['farmer','pilot','soldier','scientist'], line:p=>`never loses to the conditions` },
+  'force fields':    { careers:['soldier','cop','firefighter','astronaut','bodyguard'], line:p=>`is untouchable under fire` },
+  'phasing':         { careers:['agent','crimelord','cop','firefighter'], line:p=>`walks through every barrier` },
+  'duplication':     { careers:['tech','aistartup','founder','realtor','restaurateur','chef','farmer','corporate'], line:p=>`is everywhere at once, out-producing everyone` },
+  'magnetism':       { careers:['engineer','mechanic','electrician','tech','soldier'], line:p=>`controls metal and machines effortlessly` },
+  'sonic scream':    { careers:['musician','popstar','soldier','cop'], line:p=>`commands attention like nothing else` },
+};
+// Returns the strongest relevant power for this person's current job, or null.
+function relevantPower(p){
+  if(!p.powers || !p.powers.length || p.job==='none') return null;
+  for(const pow of p.powers){ const m=POWER_CAREER[pow]; if(m && m.careers.includes(p.job)) return pow; }
+  return null;
+}
+// How much of an edge powers give in the current career: 0 (none) .. ~1 per relevant power.
+function powerEdge(p){
+  if(!p.powers || !p.powers.length || p.job==='none') return 0;
+  let edge=0;
+  p.powers.forEach(pow=>{ const m=POWER_CAREER[pow]; if(m && m.careers.includes(p.job)) edge+=1; });
+  return edge;
+}
 // generate a comic-book alias for villains and nemeses
 const VILLAIN_PREFIX=['Doctor','Lord','The','Baron','Mister','Madame','Professor','Captain','King','Lady'];
 const VILLAIN_CORE=['Venom','Shadow','Chaos','Inferno','Mortis','Riddle','Void','Vex','Carnage','Cipher','Dread','Sable','Hex','Onyx','Specter','Malice','Grim','Toxin','Pyre','Wraith','Vortex','Blight'];
@@ -984,6 +1022,9 @@ function resolveFight(p, prep, isUFC){
   else if(prep==='rest'){ p.stats.health=clamp(p.stats.health+3); edge=6; }
   else if(prep==='promo'){ p.stats.fame=clamp(p.stats.fame+6); edge=4; }
   if(hasFlag(p,'trainedByLegend')) edge+=6;
+  // relevant superpowers make a fighter nearly unbeatable
+  const fightPowerEdge = powerEdge(p);
+  if(fightPowerEdge>0){ edge += 40 + fightPowerEdge*15; if(hasPower(p,'regeneration')) p.stats.health=clamp(p.stats.health+5); }
   if(hasFlag(p,'juicing')){
     edge+=10;
     // random in-competition drug test; smart fighters evade it
@@ -1366,16 +1407,19 @@ function runJob(p){
       worldEvent(p, exp.t, exp.w);
       if(chance(25)){ p.stats.health=clamp(p.stats.health-15); log(`The experiment backfired on ${p.first}.`,'bad'); }
     }
-    // dangerous staged careers (boxer) take damage
-    if(c.danger && !c.hero && chance(p._stage>=2?22:12)){ p.stats.health=clamp(p.stats.health-(8+rnd(12))); log(`${p.first} took a beating this season. Recovery will take time.`,'bad'); }
+    // dangerous staged careers (boxer) take damage — powers soften it
+    if(c.danger && !c.hero && chance(Math.max(3,(p._stage>=2?22:12) - powerEdge(p)*8))){ p.stats.health=clamp(p.stats.health-(8+rnd(12))*(hasPower(p,'regeneration')?0.3:1)); log(`${p.first} took a beating this season. Recovery will take time.`,'bad'); }
     // pay = base * stage multiplier, with a little variance
     pay=Math.round(c.base*st.mult*(0.85+Math.random()*0.4));
+    // a power relevant to this career boosts earnings and reduces danger
+    const pEdge = powerEdge(p);
+    if(pEdge>0){ pay=Math.round(pay*(1+0.35*pEdge)); }
     p.salary=pay;
     // can we advance to the next stage?
     const next=stages[p._stage+1];
     if(next){
-      const ready = p._stageYears>=next.years && p.stats[key]>=next.req;
-      if(ready && chance(55+p.stats[key]*0.3)){
+      const ready = p._stageYears>=next.years && (p.stats[key]>=next.req || pEdge>=1);
+      if(ready && chance(55+p.stats[key]*0.3 + pEdge*25)){
         p._stage++; p._stageYears=0; p.jobTitle=next.t;
         p.stats.fame=clamp(p.stats.fame + (next.fame||0));
         const callup = pick(['got the call-up','earned the promotion','broke through','made the leap','signed the bigger deal']);
@@ -1413,8 +1457,13 @@ function runJob(p){
       if(chance(8)){ p.stats.fame=clamp(p.stats.fame+25); log(`Something ${p.first} made ${pick(['went viral','blew up overnight','got picked up everywhere'])}. ★ Fame surged.`,'big'); pay*=3; }
     } else if(c.k==='nba'||c.k==='soccer'){
       pay = c.base + p.jobYears*c.grow;
-      const retireAge = c.k==='nba'?34:33;
+      // super strength/speed/regeneration etc. make a player dominant and extend their prime
+      const pE=powerEdge(p);
+      if(pE>0){ pay=Math.round(pay*(1+0.5*pE)); }
+      const retireAge = (c.k==='nba'?34:33) + (hasPower(p,'regeneration')?12:0) + (pE>0?4:0);
       if(p.age>retireAge && chance(40)){ log(`The body gave out. ${p.first} retired from the game — a legend's run.`,'big'); p.stats.fame=clamp(p.stats.fame+10); endJob(p,'Retired from pro sports'); return; }
+      // a powered athlete dominates: fame and the occasional record-breaking season
+      if(pE>0 && chance(30)){ p.stats.fame=clamp(p.stats.fame+8); log(`${p.first} put up superhuman numbers this season. Records are falling.`,'big'); }
     } else if(c.k==='founder'){
       // startup: mostly nothing, sometimes everything
       if(chance(7)){ const exit=200000+rnd(4000000); p.money+=exit; log(`The company sold. ${p.first} cashed out for ${money(exit)}.`,'big'); p.stats.fame=clamp(p.stats.fame+15); }
@@ -1434,7 +1483,9 @@ function runJob(p){
     } else if(c.k==='ufc'){
       // fights now happen quarterly (prep-and-fight); yearly tick just settles base income
       pay = c.base + p.jobYears*c.grow;
-      if(p.age>38 && chance(35)){ log(`${p.first} hung up the gloves for good.`,'big'); endJob(p,'Retired from fighting'); return; }
+      if(powerEdge(p)>0) pay=Math.round(pay*1.6);
+      const ufcRetire = 38 + (hasPower(p,'regeneration')?12:0);
+      if(p.age>ufcRetire && chance(35)){ log(`${p.first} hung up the gloves for good.`,'big'); endJob(p,'Retired from fighting'); return; }
     } else if(c.k==='politician'){
       pay = c.base + (p._rung??0)*c.grow;
       const steps=c.ladder, idx=p._rung??0;
@@ -1449,23 +1500,28 @@ function runJob(p){
         } else if(chance(15)){ p.stats.fame=clamp(p.stats.fame-5); log(`${p.first} lost an election. The press was unkind.`,'bad'); }
       }
     }
+    // powers like telepathy/mind control/shapeshifting boost any wild career's earnings
+    const wildEdge=powerEdge(p);
+    if(wildEdge>0 && pay>0){ pay=Math.round(pay*(1+0.3*wildEdge)); }
     p.salary=pay;
   } else {
     pay = c.base + p.jobYears*c.grow;
     p.stress=clamp(p.stress + rnd(4) - 1);
-    // promotion through a ladder
+    const stdEdge = powerEdge(p);
+    // a relevant power makes you a standout: faster promotions, better pay
     if(c.ladder){
       const steps=c.ladder, idx=p._rung??0;
-      if(idx<steps.length-1 && p.jobYears>=3+idx*2 && chance(35+p.stats.smarts*0.2)){
+      if(idx<steps.length-1 && p.jobYears>=3+idx*2 && chance(35+p.stats.smarts*0.2 + stdEdge*30)){
         p._rung=idx+1; p.jobTitle=steps[p._rung];
         p.salary=pay=Math.round(pay*(1.25+Math.random()*0.3));
         log(`${p.first} was promoted to ${p.jobTitle}. Pay is now ${money(pay)}.`,'big');
       } else if(!p.jobTitle){ p.jobTitle=steps[idx]; }
     }
-    // ordinary raise
-    if(chance(14)){ pay=Math.round(pay*(1.05+Math.random()*0.06)); p.salary=pay; log(`${p.first} earned a raise. Pay is now ${money(pay)}.`,'good'); }
-    // dangerous jobs
-    if(c.danger && chance(4)){ p.stats.health=clamp(p.stats.health-25); log(`${p.first} was wounded in the line of duty.`,'bad'); }
+    if(stdEdge>0){ pay=Math.round(pay*(1+0.3*stdEdge)); p.salary=pay; }
+    // ordinary raise (powers make raises more frequent)
+    if(chance(14 + stdEdge*15)){ pay=Math.round(pay*(1.05+Math.random()*0.06)); p.salary=pay; log(`${p.first} earned a raise. Pay is now ${money(pay)}.`,'good'); }
+    // dangerous jobs (powers protect you)
+    if(c.danger && chance(Math.max(1,4 - stdEdge*2))){ p.stats.health=clamp(p.stats.health-25*(hasPower(p,'regeneration')||hasPower(p,'force fields')?0.3:1)); log(`${p.first} was wounded in the line of duty.`,'bad'); }
   }
   // living costs scale a little with age/family
   const costs = 11000 + (p.married?7000:0) + p.childrenIds.length*9000 + p.age*120;
@@ -4474,6 +4530,34 @@ function openCareer(){
     }
   }
 
+  // POWER-ASSISTED CAREER ACTION — when a power is relevant to this job
+  const usefulPower = relevantPower(p);
+  if(usefulPower){
+    const m=POWER_CAREER[usefulPower];
+    opts.push(OH(`— Your power: ${usefulPower} —`));
+    opts.push(O('✨',`Use ${usefulPower} on the job`,`you ${m.line(p)} · big edge`,0,()=>{ closeSheet();
+      // a near-guaranteed windfall/advancement using the power
+      const gain=Math.round((p.salary||40000)*(0.5+Math.random()*1.5))+20000;
+      p.money+=gain; p.stats.fame=clamp(p.stats.fame+4);
+      // chance to leap a rung/stage or land a defining win
+      const c2=CAREER(p.job);
+      if(c2.ladder && (p._rung??0)<c2.ladder.length-1 && chance(70)){ p._rung=(p._rung??0)+1; p.jobTitle=c2.ladder[p._rung]; p.salary=Math.round(p.salary*1.3); log(`${p.first} used ${usefulPower} to vault ahead — now ${p.jobTitle}, ${money(gain)} richer.`,'big'); }
+      else if(c2.staged && c2.stages[(p._stage??0)+1] && chance(60)){ p._stage=(p._stage??0)+1; p._stageYears=0; p.jobTitle=c2.stages[p._stage].t; log(`${p.first} leveraged ${usefulPower} into a breakthrough — now ${p.jobTitle}, ${money(gain)} earned.`,'big'); }
+      else log(`${p.first} used ${usefulPower} to dominate the work — ${money(gain)} earned, and untouchable in their field.`,'big');
+      render();
+    }));
+    // a flavored, profession-specific power flourish
+    if(['lawyer','judge'].includes(p.job) && (hasPower(p,'telepathy')||hasPower(p,'mind control'))){
+      opts.push(O('⚖️','Read the jury\'s minds','win the unwinnable case',0,()=>{ closeSheet(); const fee=50000+rnd(500000); p.money+=fee; p.stats.fame=clamp(p.stats.fame+8); setFlag(p,'undefeatedLawyer'); log(`${p.first} knew every juror's thoughts and won decisively — ${money(fee)}. They never lose now.`,'big'); render(); }));
+    }
+    if(['nba','nfl','soccer'].includes(p.job) && (hasPower(p,'super strength')||hasPower(p,'super speed')||hasPower(p,'time manipulation'))){
+      opts.push(O('🏆','Dominate the championship','an unstoppable season',0,()=>{ closeSheet(); const bonus=2000000+rnd(20000000); p.money+=bonus; p.stats.fame=clamp(p.stats.fame+20); p.champion=true; setFlag(p,'sportsLegend'); worldEvent(p,`${p.first} had the greatest season in the sport's history.`,{hope:true}); log(`🏆 ${p.first} steamrolled to the title — superhuman, untouchable. ${money(bonus)}.`,'big'); render(); }));
+    }
+    if(hasPower(p,'technopathy') && ['tech','aistartup','founder','engineer'].includes(p.job)){
+      opts.push(O('💻','Will the product into existence','ship the impossible',0,()=>{ closeSheet(); const val=1000000+rnd(50000000); p.money+=Math.round(val*0.2); p.stats.fame=clamp(p.stats.fame+12); log(`${p.first} spoke directly to the machines and shipped something miraculous — ${money(Math.round(val*0.2))}.`,'big'); render(); }));
+    }
+  }
+
   // PER-PROFESSION CHOICES
   const choiceFn = CAREER_CHOICES[p.job];
   if(choiceFn){
@@ -5202,7 +5286,7 @@ function openSelf(){
     ${p.ruler?`<br><span style="color:var(--gold)">${p.ruler.title} of ${p.ruler.country} 👑</span>`:''}
     ${p.fightRecord?`<br><span style="color:var(--sage)">Fight record: ${p.fightRecord.w}-${p.fightRecord.l}${p.champion?' · 🏆 CHAMPION':''}</span>`:''}
     ${p.greek?`<br>${GREEK.find(g=>g.k===p.greek)?GREEK.find(g=>g.k===p.greek).l:''} member`:''}
-    ${p.powers&&p.powers.length?`<br><span style="color:var(--sky)">Powers: ${p.powers.join(', ')}</span>`:''}
+    ${p.powers&&p.powers.length?`<br><span style="color:var(--sky)">Powers: ${p.powers.join(', ')}</span>${relevantPower(p)?`<br><span style="color:var(--gold);font-size:12px">⚡ ${relevantPower(p)} gives a huge edge in your career</span>`:''}`:''}
     ${p.job==='superhero'&&(p.heroRep||p.livesSaved)?`<br><span style="color:var(--sky)">Hero reputation: ${Math.round(p.heroRep||0)} · ${(p.livesSaved||0).toLocaleString()} lives saved${p.gadgetLevel?` · ${['','Workshop','Hi-tech Lab','Secret Lair','Hero Fortress','Orbital HQ'][p.gadgetLevel]}`:''}</span>`:''}
     ${p.sidekick?`<br><span style="color:var(--sage)">Sidekick: ${p.sidekick.name} (bond ${Math.round(p.sidekick.bond)})</span>`:''}
     ${p.nemesis?`<br><span style="color:var(--blood)">Nemesis: ${p.nemesis.name} (defeated ${p.nemesis.defeated}×)</span>`:''}
