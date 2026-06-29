@@ -573,6 +573,10 @@ function blankPerson(opt={}){
     escapeAttempts:0,  // bribes/escapes tried at current incarceration
     powers:[],         // superpowers (hero/villain)
     nemesis:null,      // {name, defeated} — hero's archenemy
+    sidekick:null,     // {name, bond} — hero's partner
+    heroRep:0,         // hero reputation / public trust (0-100)
+    gadgetLevel:0,     // hero gear/base level — boosts heroics
+    livesSaved:0,      // running tally of people saved
     henchman:null,     // {name, loyalty} — villain's named lieutenant
     minions:0,         // size of the villain's crew
     minionPower:0,     // crew capability (0-100), boosts income/escape/evasion
@@ -656,6 +660,10 @@ function migrate(){
     if(p.escapeAttempts==null) p.escapeAttempts=0;
     if(!p.powers) p.powers=[];
     if(p.nemesis===undefined) p.nemesis=null;
+    if(p.sidekick===undefined) p.sidekick=null;
+    if(p.heroRep==null) p.heroRep=0;
+    if(p.gadgetLevel==null) p.gadgetLevel=0;
+    if(p.livesSaved==null) p.livesSaved=0;
     if(p.henchman===undefined) p.henchman=null;
     if(p.minions==null) p.minions=0;
     if(p.minionPower==null) p.minionPower=0;
@@ -1325,8 +1333,12 @@ function runJob(p){
     if(st.fame) p.stats.fame=clamp(p.stats.fame + st.fame*0.2 + (chance(25)?st.fame*0.1:0));
     // SUPERHERO: fight crime (take damage), earn from endorsements at higher stages, do heroic world-events
     if(c.hero){
-      if(chance(p._stage>=2?40:25)){ p.stats.health=clamp(p.stats.health-(6+rnd(14))); log(`${p.first} was hurt stopping a crime in progress.`,'bad'); }
-      if(p._stage>=2 && chance(18)){ worldEvent(p, pick([
+      // reputation and endorsements provide a modest income; gear reduces injury risk
+      const repIncome = Math.round((p.heroRep||0)*3000 + (p.stats.fame||0)*1500);
+      if(repIncome>0){ p.salary=Math.max(p.salary, repIncome); }
+      const injuryRisk = (p._stage>=2?40:25) - (p.gadgetLevel||0)*5 - (p.powers?p.powers.length*3:0);
+      if(chance(Math.max(8,injuryRisk))){ p.stats.health=clamp(p.stats.health-(6+rnd(14))); log(`${p.first} was hurt stopping a crime in progress.`,'bad'); }
+      if(p._stage>=2 && chance(18)){ const saved=50+rnd(500); p.livesSaved=(p.livesSaved||0)+saved; worldEvent(p, pick([
         `${p.first} saved the city from a catastrophe.`,
         `${p.first} foiled a supervillain's scheme.`,
         `${p.first} pulled hundreds from a collapsing bridge.`]), {hope:true}); }
@@ -1939,6 +1951,38 @@ const CHOICE_EVENTS = [
       {label:'Let it be published', sub:'go public', effect:p=>{ setFlag(p,'identityExposed'); fx(p,{fame:22,happy:-4}); worldEvent(p,`${p.first} revealed their identity to the world.`,{hope:true}); return `${p.first} stepped into the light. Famous, exposed, and free of the lie.`;}},
       {label:'Scare them off', sub:'-reputation', effect:p=>{ fx(p,{fame:-5}); if(chance(60)){return `${p.first} intimidated the journalist into silence. Effective, if not heroic.`;} setFlag(p,'identityExposed'); return `It backfired — they published out of spite. ${p.first} is exposed.`;}},
     ]},
+  { id:'hero_disaster', emoji:'🌪', title:'Disaster strikes', 
+    when:p=>p.job==='superhero'&&p._stage>=1, weight:2.5,
+    body:p=>`A massive earthquake has trapped hundreds under rubble downtown. ${capFirst(p.first)} is the only one who can help in time.`,
+    choices:[
+      {label:'Dive into the rescue', sub:'+rep, +lives, risk', effect:p=>{ const skill=(p.powers?p.powers.length*10:0)+(p.gadgetLevel||0)*6+p.stats.athletic*0.3; const saved=Math.round(50+skill+rnd(100)); p.livesSaved=(p.livesSaved||0)+saved; p.heroRep=clamp((p.heroRep||0)+12); fx(p,{fame:12,health:-10}); worldEvent(p,`${p.first} saved ${saved} people from the rubble after the quake.`,{hope:true}); return `${p.first} pulled ${saved} people from the wreckage. A city wept with gratitude.`;}},
+      {label:'Coordinate the response', sub:'+rep, safer', effect:p=>{ const saved=Math.round(30+rnd(60)); p.livesSaved=(p.livesSaved||0)+saved; p.heroRep=clamp((p.heroRep||0)+6); fx(p,{fame:5}); return `${p.first} organized the rescue effort, saving ${saved} and keeping everyone calm.`;}},
+      {label:'You\'re too hurt to help', sub:'-rep', effect:p=>{ p.heroRep=clamp((p.heroRep||0)-8); fx(p,{happy:-10}); return `${p.first} couldn't answer the call this time. The guilt is crushing.`;}},
+    ]},
+  { id:'hero_corruption', emoji:'💰', title:'A tempting offer', 
+    when:p=>p.job==='superhero'&&p._stage>=2, weight:1.5,
+    body:p=>`A shadowy power broker offers ${p.first} a fortune to look the other way on certain "business."`,
+    choices:[
+      {label:'Refuse and expose them', sub:'+rep, the hero\'s way', effect:p=>{ p.heroRep=clamp((p.heroRep||0)+10); fx(p,{fame:6}); setFlag(p,'incorruptible'); return `${p.first} threw the offer back in their face and exposed the scheme. A true hero.`;}},
+      {label:'Take the money quietly', sub:'+$, -integrity', effect:p=>{ const bribe=500000+rnd(3000000); fx(p,{money:bribe}); p.heroRep=clamp((p.heroRep||0)-15); setFlag(p,'compromised'); return `${p.first} took ${money(bribe)} and stayed silent. A crack in the cape.`;}},
+      {label:'Pretend to accept, then sting them', sub:'+rep, clever', effect:p=>{ if(p.stats.smarts>55||chance(55)){ p.heroRep=clamp((p.heroRep||0)+8); fx(p,{fame:8}); return `${p.first} played along and brought the whole operation down. Brilliant.`;} fx(p,{happy:-6}); return `The sting went wrong and ${p.first} barely escaped the trap.`;}},
+    ]},
+  { id:'hero_sidekick_peril', emoji:'🆘', title:'Your sidekick is in danger', 
+    when:p=>p.job==='superhero'&&p.sidekick, weight:2,
+    body:p=>`${p.sidekick.name.split(' ')[0]} has been captured by criminals as bait to lure ${p.first} into a trap.`,
+    choices:[
+      {label:'Charge in to save them', sub:'loyalty, risk', effect:p=>{ const skill=(p.powers?p.powers.length*10:0)+(p.gadgetLevel||0)*8; if(chance(50+skill*0.2)){ p.sidekick.bond=clamp(p.sidekick.bond+20); p.heroRep=clamp((p.heroRep||0)+8); return `${p.first} crashed the trap and saved ${p.sidekick.name.split(' ')[0]}. Their bond is unbreakable.`;} fx(p,{health:-22}); p.sidekick.bond=clamp(p.sidekick.bond+10); return `${p.first} took heavy damage but freed ${p.sidekick.name.split(' ')[0]}. Barely.`;}},
+      {label:'Plan a careful rescue', sub:'+smarts, safer', effect:p=>{ if(p.stats.smarts>50||chance(60)){ p.sidekick.bond=clamp(p.sidekick.bond+12); return `${p.first} outsmarted the kidnappers and freed ${p.sidekick.name.split(' ')[0]} without a scratch.`;} fx(p,{health:-10}); return `The plan mostly worked — a few bruises, but ${p.sidekick.name.split(' ')[0]} is safe.`;}},
+      {label:'It\'s too dangerous', sub:'lose your sidekick', effect:p=>{ const n=p.sidekick.name.split(' ')[0]; p.sidekick=null; p.heroRep=clamp((p.heroRep||0)-12); fx(p,{happy:-15}); return `${p.first} couldn't risk it. ${n} didn't make it out. A wound that never heals.`;}},
+    ]},
+  { id:'hero_burnout', emoji:'😔', title:'The weight of the cape', 
+    when:p=>p.job==='superhero'&&p._stage>=2&&(p.livesSaved||0)>100, weight:1.3,
+    body:p=>`Years of carrying the city's safety have worn ${p.first} down. The nightmares won't stop.`,
+    choices:[
+      {label:'Keep fighting through it', sub:'+rep, -health', effect:p=>{ fx(p,{health:-6,stress:15}); p.heroRep=clamp((p.heroRep||0)+5); return `${p.first} buried the pain and kept going. The city never knows the cost.`;}},
+      {label:'Take time to heal', sub:'+health, -rep', effect:p=>{ fx(p,{health:12,happy:12,stress:-25}); p.heroRep=clamp((p.heroRep||0)-5); return `${p.first} stepped back to recover. The cape can wait; the person matters.`;}},
+      {label:'Find someone to confide in', sub:'+joy', effect:p=>{ fx(p,{happy:10,stress:-15}); return `${p.first} finally opened up to someone. The burden feels lighter shared.`;}},
+    ]},
   // ========== VILLAIN EVENTS ==========
   { id:'villain_scheme', emoji:'🦹', title:'A wicked opportunity', 
     when:p=>p.job==='villain'&&!p.inPrison, weight:3,
@@ -2370,10 +2414,22 @@ function showEscapeChoice(p, done){
   const opts=[];
   // option set depends on security level and whether they have powers
   if(lvl<2){
-    opts.push({l:'Bribe a guard', sub:`$${(50000*(lvl+1)).toLocaleString()} · risky`, kind:'bribe'});
+    // tiered bribes — the more you offer, the better your odds. Higher security demands more.
+    const secMult=lvl+1;
+    const tiers=[
+      {k:'bribe_s', l:'Bribe a guard — small', amt:Math.round(10000*secMult)},
+      {k:'bribe_m', l:'Bribe a guard — medium', amt:Math.round(150000*secMult)},
+      {k:'bribe_l', l:'Bribe a guard — large', amt:Math.round(1500000*secMult)},
+    ];
+    tiers.forEach(t=>{
+      const afford = p.money>=t.amt;
+      opts.push({l:t.l, sub:`${money(t.amt)}${afford?'':' · can\'t afford'} · bigger = better odds`, kind:t.k, amt:t.amt, disabled:!afford});
+    });
     opts.push({l:villain?'Break out with brute force':'Stage a prison break', sub:'violent, can fail hard', kind:'force'});
   } else {
     opts.push({l:'Attempt the impossible escape', sub:'the Vault has never been beaten… almost', kind:'vault'});
+    // even in the Vault, a colossal bribe can tempt someone
+    if(p.money>=10000000) opts.push({l:'Bribe your way out of the Vault', sub:`${money(10000000)} · desperate, long odds`, kind:'bribe_vault', amt:10000000});
   }
   if(p.powers && p.powers.length){
     opts.push({l:`Use your powers (${p.powers[0]})`, sub:'best odds, escalates security', kind:'powers'});
@@ -2388,9 +2444,9 @@ function showEscapeChoice(p, done){
     <div style="text-align:center;font-size:40px;margin:4px 0">⛓️</div>
     <h3 style="text-align:center">Locked up — ${sec}</h3>
     <p style="padding:4px 22px 14px;color:var(--ink-dim);font-size:14.5px;line-height:1.55;text-align:center">${p.first} is behind bars${p.lifeSentence?' for life':''}. The right move could mean freedom — or a transfer somewhere far worse.</p>`;
-  opts.forEach((c,i)=>{ html+=`<button class="opt" data-i="${i}"><span class="oico">▸</span><span class="otxt">${c.l}<span class="osub">${c.sub}</span></span></button>`; });
+  opts.forEach((c,i)=>{ html+=`<button class="opt${c.disabled?' disabled':''}" data-i="${i}"${c.disabled?' disabled style="opacity:.5"':''}><span class="oico">▸</span><span class="otxt">${c.l}<span class="osub">${c.sub}</span></span></button>`; });
   const s=document.createElement('div'); s.className='scrim'; s.innerHTML=`<div class="sheet">${html}</div>`; root.appendChild(s);
-  s.querySelectorAll('.opt').forEach(b=>{ b.onclick=()=>{ const c=opts[+b.dataset.i]; s.remove(); resolveEscape(p,c.kind); done(); }; });
+  s.querySelectorAll('.opt').forEach(b=>{ b.onclick=()=>{ const c=opts[+b.dataset.i]; if(c.disabled)return; s.remove(); resolveEscape(p,c.kind,c.amt); done(); }; });
 }
 function escapeFree(p, how){
   p.inPrison=false; p.prisonYears=0; p.lifeSentence=false; p._yearsServed=0;
@@ -2408,16 +2464,19 @@ function escapeFail(p, how){
   if(!p.lifeSentence) p.prisonYears+=2+rnd(3); // added time
   p.stats.health=clamp(p.stats.health-6);
 }
-function resolveEscape(p, kind){
+function resolveEscape(p, kind, amt){
   if(kind==='wait'){ log(`${p.first} kept their head down and served the time.`,'muted'); return; }
   const sly = p.traits.includes('sly')?10:0, lucky=p.traits.includes('lucky')?8:0;
   const crew = Math.round((p.minionPower||0)/8); // a capable crew improves any escape
   const lifePenalty = p.lifeSentence?18:0; // hardest crimes are harder to walk away from
-  if(kind==='bribe'){
-    const cost=50000*((p.securityLevel||0)+1);
+  if(kind==='bribe_s' || kind==='bribe_m' || kind==='bribe_l' || kind==='bribe_vault'){
+    const cost=amt||50000;
     if(p.money<cost){ log(`${p.first} couldn't raise the ${money(cost)} bribe.`,'muted'); return; }
     p.money-=cost;
-    if(chance(45+sly+lucky+crew-lifePenalty)) escapeFree(p,'The bribe worked.'); else escapeFail(p,'The guard took the money and ratted.');
+    // base odds by tier — a bigger envelope buys a more cooperative guard
+    const tierBase = kind==='bribe_s'?38 : kind==='bribe_m'?58 : kind==='bribe_l'?78 : 50;
+    if(chance(tierBase+sly+lucky+crew-lifePenalty)) escapeFree(p,'The bribe worked.');
+    else { p.money=Math.max(0,p.money); escapeFail(p,'The guard took the money and ratted.'); }
   } else if(kind==='force'){
     if(chance(30+sly+lucky+crew+(p.stats.athletic*0.2)-lifePenalty)) escapeFree(p,'A bloody breakout.'); else escapeFail(p,'The breakout was crushed.');
   } else if(kind==='powers'){
@@ -2425,7 +2484,6 @@ function resolveEscape(p, kind){
   } else if(kind==='vault'){
     if(chance(10+lucky+crew+(p.powers.length?18:0))) escapeFree(p,'Against all odds, the Vault was beaten.'); else escapeFail(p,'The Vault held.');
   } else if(kind==='crew'){
-    // crew raid: strong crews can spring the boss even from high security
     const odds = 25 + (p.minionPower||0)/2 + lucky - lifePenalty - (p.securityLevel||0)*10;
     if(chance(odds)){ escapeFree(p,`${p.first}'s crew stormed the walls and broke them out!`); }
     else { if((p.minions||0)>0){ const lost=1+rnd(2); p.minions=Math.max(0,p.minions-lost); } escapeFail(p,'The raid was repelled and the crew took losses.'); }
@@ -3752,10 +3810,48 @@ function openActivities(){
 
   // HERO / VILLAIN ACTIONS (proactive deeds)
   if(p.job==='superhero' && !p.inPrison){
-    opts.push(OH('— Heroics —'));
-    opts.push(O('🚨','Patrol the city','+fame, risk of injury',0,()=>{ closeSheet(); if(chance(70)){ p.stats.fame=clamp(p.stats.fame+4); if(chance(30))p.stats.health=clamp(p.stats.health-8); log(`${p.first} stopped a mugging on patrol. The city's a little safer.`,'good'); } else { p.stats.health=clamp(p.stats.health-12); log(`${p.first} got hurt breaking up an armed robbery.`,'bad'); } render(); }));
-    opts.push(O('🔬','Train your powers','+power chance',0,()=>{ closeSheet(); if(chance(30)){ const pow=grantPower(p); if(pow){ log(`${p.first} unlocked a new ability: ${pow}!`,'big'); render(); return; } } p.stats.athletic=clamp(p.stats.athletic+3); log(`${p.first} honed their abilities in secret.`,'good'); render(); }));
-    opts.push(O('🏛','Build a secret lair','-$, +edge',0,()=>{ if(p.money<50000){closeSheet();log(`${p.first} can't afford a proper lair yet.`,'muted');render();return;} p.money-=50000; setFlag(p,'hasLair'); closeSheet(); log(`${p.first} built a hidden headquarters. Every hero needs one.`,'big'); render(); }));
+    opts.push(OH(`— Heroics — rep ${Math.round(p.heroRep||0)} · ${p.livesSaved||0} lives saved · gear lvl ${p.gadgetLevel||0} —`));
+    // PATROL — scales with gadget level & powers; builds reputation and saves lives
+    opts.push(O('🚨','Patrol the city','stop crime · +rep, +fame',0,()=>{ closeSheet();
+      const skill = (p.stats.athletic*0.3) + (p.powers?p.powers.length*10:0) + (p.gadgetLevel||0)*6;
+      if(chance(60+skill*0.2)){
+        const saved=1+rnd(4); p.livesSaved=(p.livesSaved||0)+saved; p.heroRep=clamp((p.heroRep||0)+5); p.stats.fame=clamp(p.stats.fame+4);
+        if(p.sidekick) p.sidekick.bond=clamp(p.sidekick.bond+3);
+        log(`${p.first} foiled a crime on patrol and saved ${saved} ${saved===1?'life':'lives'}. The city feels safer.`,'good');
+      } else {
+        p.stats.health=clamp(p.stats.health-12);
+        if((p.gadgetLevel||0)>0 || (p.powers&&p.powers.length)) log(`${p.first} got hurt in a brutal fight, but pulled through thanks to ${(p.powers&&p.powers.length)?'their powers':'their gear'}.`,'muted');
+        else log(`${p.first} got badly hurt breaking up an armed robbery.`,'bad');
+      }
+      render();
+    }));
+    opts.push(O('🦾','Train your powers','+power chance, +athletic',0,()=>{ closeSheet(); if(chance(30)){ const pow=grantPower(p); if(pow){ log(`${p.first} unlocked a new ability: ${pow}!`,'big'); render(); return; } } p.stats.athletic=clamp(p.stats.athletic+4); log(`${p.first} honed their abilities in secret.`,'good'); render(); }));
+    // GADGETS / BASE — upgradeable gear that boosts heroics
+    const gl=p.gadgetLevel||0;
+    const gnames=['','Workshop','Hi-tech Lab','Secret Lair','Hero Fortress','Orbital HQ'];
+    if(gl<5){
+      const cost=[50000,200000,800000,3000000,12000000][gl];
+      opts.push(O('🛠',`Upgrade your gear → ${gnames[gl+1]}`,`${money(cost)} · stronger heroics`,0,()=>{ if(p.money<cost){closeSheet();log(`${p.first} needs ${money(cost)} for that upgrade.`,'muted');render();return;} p.money-=cost; p.gadgetLevel=gl+1; setFlag(p,'hasLair'); closeSheet(); log(`${p.first} upgraded to a ${gnames[gl+1]}. The fight against crime just got an edge.`,'big'); render(); }));
+    }
+    // SIDEKICK
+    if(!p.sidekick){
+      opts.push(O('🧑‍🚀','Take on a sidekick','a partner in the fight',0,()=>{ closeSheet(); p.sidekick={name:newFirst(makeSex())+' '+pick(LAST), bond:60}; log(`${p.first} took on a sidekick: ${p.sidekick.name.split(' ')[0]}. The duo begins.`,'good'); render(); }));
+    } else {
+      opts.push(O('🤝','Train your sidekick','+their bond & skill',0,()=>{ closeSheet(); p.sidekick.bond=clamp(p.sidekick.bond+8); p.heroRep=clamp((p.heroRep||0)+2); log(`${p.first} mentored ${p.sidekick.name.split(' ')[0]}. A formidable team.`,'good'); render(); }));
+    }
+    // FUND THE FIGHT — heroes can monetize their fame
+    opts.push(O('💰','Endorsements & merch','turn fame into funding',0,()=>{ closeSheet(); if(p.stats.fame<15){log(`${p.first} isn't famous enough yet for big deals.`,'muted');render();return;} const deal=Math.round((p.stats.fame*1000)+(p.heroRep||0)*2000+rnd(200000)); p.money+=deal; log(`${p.first} signed endorsements worth ${money(deal)} to fund the mission.`,'good'); render(); }));
+    // CONFRONT NEMESIS proactively
+    if(p.nemesis){
+      opts.push(O('💥',`Hunt down ${p.nemesis.name}`,'take the fight to your nemesis',0,()=>{ closeSheet();
+        const skill=(p.stats.athletic*0.3)+(p.powers?p.powers.length*10:0)+(p.gadgetLevel||0)*8+(p.sidekick?10:0);
+        if(chance(45+skill*0.2)){ p.nemesis.defeated=(p.nemesis.defeated||0)+1; p.heroRep=clamp((p.heroRep||0)+10); p.stats.fame=clamp(p.stats.fame+12);
+          if(p.nemesis.defeated>=3){ const beaten=p.nemesis.name; worldEvent(p,`${p.first} put ${beaten} behind bars for good.`,{hope:true}); p.nemesis=null; log(`${p.first} finally defeated ${beaten} for good. The city is safer.`,'big'); }
+          else log(`${p.first} bested ${p.nemesis.name} again (${p.nemesis.defeated}/3). They'll be back.`,'big');
+        } else { p.stats.health=clamp(p.stats.health-20); log(`${p.nemesis.name} got the better of ${p.first} this time. A painful defeat.`,'bad'); }
+        render();
+      }));
+    }
   }
   if(p.job==='villain' && !p.inPrison){
     opts.push(OH(`— Villainy — ${p.minions||0} minions · crew power ${Math.round(p.minionPower||0)} · heat ${p.heat||0} 🔥`));
@@ -4259,6 +4355,8 @@ function openSelf(){
     ${p.fightRecord?`<br><span style="color:var(--sage)">Fight record: ${p.fightRecord.w}-${p.fightRecord.l}${p.champion?' · 🏆 CHAMPION':''}</span>`:''}
     ${p.greek?`<br>${GREEK.find(g=>g.k===p.greek)?GREEK.find(g=>g.k===p.greek).l:''} member`:''}
     ${p.powers&&p.powers.length?`<br><span style="color:var(--sky)">Powers: ${p.powers.join(', ')}</span>`:''}
+    ${p.job==='superhero'&&(p.heroRep||p.livesSaved)?`<br><span style="color:var(--sky)">Hero reputation: ${Math.round(p.heroRep||0)} · ${(p.livesSaved||0).toLocaleString()} lives saved${p.gadgetLevel?` · ${['','Workshop','Hi-tech Lab','Secret Lair','Hero Fortress','Orbital HQ'][p.gadgetLevel]}`:''}</span>`:''}
+    ${p.sidekick?`<br><span style="color:var(--sage)">Sidekick: ${p.sidekick.name} (bond ${Math.round(p.sidekick.bond)})</span>`:''}
     ${p.nemesis?`<br><span style="color:var(--blood)">Nemesis: ${p.nemesis.name} (defeated ${p.nemesis.defeated}×)</span>`:''}
     ${p.henchman?`<br><span style="color:var(--gold)">Henchman: ${p.henchman.name} (loyalty ${Math.round(p.henchman.loyalty)})</span>`:''}
     ${p.minions>0?`<br><span style="color:var(--gold)">Crew: ${p.minions} minions · power ${Math.round(p.minionPower||0)}</span>`:''}
