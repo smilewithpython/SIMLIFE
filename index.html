@@ -592,6 +592,7 @@ function blankPerson(opt={}){
     prisonRole:null,   // 'network','shotcaller','warden-favored', etc.
     addiction:null,
     addictions:[],     // [{k,sev}] structured addictions
+    pregnant:null,     // {father, conceivedYear, fromAffair, otherParent} while expecting
     conditions:[], // chronic health conditions
     seeds:[],      // delayed consequences {dueAge, kind, data}
     flags:{},      // memory of past choices for branching
@@ -664,6 +665,7 @@ function migrate(){
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
+    if(p.pregnant===undefined) p.pregnant=null;
     if(!p.addictions){ p.addictions=[]; if(p.addiction){ const map={drinking:'alcohol',partying:'party_drugs','party drugs':'party_drugs'}; const k=map[p.addiction]||'alcohol'; if(ADDICT(k))p.addictions.push({k,sev:1}); } }
     if(p.insured==null) p.insured=false;
     if(p.inPrison==null) p.inPrison=false;
@@ -1010,6 +1012,9 @@ function ageUp(){ // kept as alias in case anything calls it
 function runYear(){
   const p=me(); if(!p.alive){ return; }
   p.age++; G.year++;
+
+  // bring any pregnancy to term
+  if(p.pregnant) resolvePregnancy(p);
 
   // age every other living person in the bloodline (so heirs grow up off-screen)
   G.people.forEach(other=>{
@@ -2906,19 +2911,23 @@ function openRelations(){
   }
   const hasMate=p.married||p.rels.find(r=>r.kind==='Partner'&&r.alive);
   if(hasMate && p.age>=18){
-    // natural conception caps at 47; fertility clinic extends to 55
-    if(p.age<=47){
-      html+=`<button class="btn ghost" data-do="baby" style="margin-top:8px">🍼 Try for a child</button>`;
-    } else if(p.age<=55){
-      html+=`<button class="btn ghost" data-do="ivf" style="margin-top:8px">🏥 Fertility clinic ($28,000)</button>`;
+    if(p.pregnant){
+      html+=`<button class="btn ghost" data-do="prenatal" style="margin-top:8px">🤰 Pregnancy & prenatal care</button>`;
+    } else {
+      html+=`<button class="btn gold" data-do="intimacy" style="margin-top:8px">💞 Intimacy</button>`;
+      if(p.age>55 && p.age<=60){
+        html+=`<button class="btn ghost" data-do="ivf" style="margin-top:8px">🏥 Fertility clinic ($28,000)</button>`;
+      }
     }
+    // cheating is available to anyone in a committed relationship
+    html+=`<button class="btn ghost" data-do="affair" style="margin-top:8px">🔥 Have an affair</button>`;
   }
   // adoption available at any adult age, with or without a partner
   if(p.age>=21){
     html+=`<button class="btn ghost" data-do="adopt" style="margin-top:8px">🤱 Adopt a child ($18,000)</button>`;
   }
   // casual fling — single, can lead to a child out of wedlock
-  if(p.age>=18 && !p.married){
+  if(p.age>=18 && !p.married && !p.rels.find(r=>r.kind==='Partner'&&r.alive)){
     html+=`<button class="btn ghost" data-do="fling" style="margin-top:8px">🔥 Casual fling</button>`;
   }
   // partner history
@@ -2939,7 +2948,9 @@ function openRelations(){
     });
     const marry=sh.querySelector('[data-do="marry"]'); if(marry)marry.onclick=()=>doMarry(p);
     const date=sh.querySelector('[data-do="date"]'); if(date)date.onclick=()=>doDate(p);
-    const baby=sh.querySelector('[data-do="baby"]'); if(baby)baby.onclick=()=>doBaby(p,false);
+    const intim=sh.querySelector('[data-do="intimacy"]'); if(intim)intim.onclick=()=>openIntimacy(p);
+    const affair=sh.querySelector('[data-do="affair"]'); if(affair)affair.onclick=()=>doAffair(p);
+    const prenatal=sh.querySelector('[data-do="prenatal"]'); if(prenatal)prenatal.onclick=()=>openPrenatalOptions(p);
     const ivf=sh.querySelector('[data-do="ivf"]'); if(ivf)ivf.onclick=()=>doBaby(p,true);
     const adopt=sh.querySelector('[data-do="adopt"]'); if(adopt)adopt.onclick=()=>doAdopt(p);
     const fling=sh.querySelector('[data-do="fling"]'); if(fling)fling.onclick=()=>doFling(p);
@@ -3021,6 +3032,176 @@ function doFling(p){
   }
   render();
 }
+
+// ===== INTIMACY & PREGNANCY =====
+// Can this character carry a pregnancy themselves? (females under 50). Otherwise their partner may.
+function canCarry(p){ return p.sex==='f' && p.age<=49; }
+function partnerCanCarry(p, mate){
+  // mate is a rels entry; female partner under ~49 can carry
+  return mate && mate.sex==='f';
+}
+function conceptionOdds(p){ return p.age<35?70:p.age<40?48:p.age<45?28:p.age<48?14:6; }
+
+function openIntimacy(p){
+  closeSheet();
+  const mate=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
+  if(!mate){ log(`${p.first} needs a partner first.`,'muted'); render(); return; }
+  const name=mate.name.split(' ')[0];
+  // who could end up pregnant?
+  const selfCarry=canCarry(p);
+  const mateCarry=partnerCanCarry(p,mate);
+  const canConceive = (selfCarry||mateCarry) && !(p.pregnant) ;
+  const opts=[];
+  opts.push(O('🛡','Protected — just enjoy it','+joy, no risk',0,()=>{
+    p.stats.happy=clamp(p.stats.happy+7); if(mate)mate.bond=clamp(mate.bond+4); closeSheet();
+    log(`${p.first} and ${name} had a lovely, carefree night.`,'good'); render();
+  }));
+  if(canConceive){
+    opts.push(O('🔥','Unprotected — leave it to chance','+joy, may conceive',0,()=>{
+      p.stats.happy=clamp(p.stats.happy+8); if(mate)mate.bond=clamp(mate.bond+5); closeSheet();
+      tryConceive(p, mate, false); render();
+    }));
+    opts.push(O('🍼','Try for a baby','actively trying',0,()=>{
+      p.stats.happy=clamp(p.stats.happy+6); if(mate)mate.bond=clamp(mate.bond+4); closeSheet();
+      tryConceive(p, mate, true); render();
+    }));
+  } else if(p.pregnant){
+    opts.push(OH('Already expecting — see the doctor in Health for prenatal care.'));
+  } else {
+    opts.push(OH('A natural pregnancy isn\'t in the cards — but adoption and fertility clinics are options.'));
+  }
+  let html=`<div class="grab"></div><h3>A night with ${name}</h3><p class="hint">${mate.kind} · bond ${Math.round(mate.bond)}/100</p>`;
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+
+function tryConceive(p, mate, trying){
+  const odds = conceptionOdds(p) * (trying?1:0.7);
+  if(!chance(odds)){
+    log(trying?`${p.first} and ${mate.name.split(' ')[0]} are trying, but no luck yet.`:`A passionate night with ${mate.name.split(' ')[0]}.`,'muted');
+    return;
+  }
+  // someone is pregnant
+  const whoCarries = canCarry(p) ? 'self' : 'partner';
+  p.pregnant = { father: whoCarries==='self'?(mate.name):p.first, conceivedYear:G.year, carrier:whoCarries, otherParent: mate.name, fromAffair:false };
+  if(whoCarries==='self') log(`${p.first} is pregnant! A baby is on the way.`,'birth');
+  else log(`${mate.name.split(' ')[0]} is pregnant! ${p.first} is going to be a parent.`,'birth');
+}
+
+// resolve a pregnancy at year-end (called from runYear)
+function resolvePregnancy(p){
+  if(!p.pregnant) return;
+  const preg=p.pregnant;
+  // ~1 year gestation in game terms; born the year after conception
+  if(G.year > preg.conceivedYear){
+    // small miscarriage chance, higher with poor health/age/addiction
+    const risk = 6 + (p.age>42?10:0) + (p.stats.health<35?12:0) + ((p.addictions||[]).length?8:0);
+    if(chance(risk)){
+      p.pregnant=null;
+      log(`Sadly, ${p.first}${preg.carrier==='self'?'':' and their partner'} lost the pregnancy. A hard loss.`,'bad');
+      p.stats.happy=clamp(p.stats.happy-12);
+      return;
+    }
+    const child=makeChild(p,{ fling:preg.fromAffair, otherParent:preg.otherParent });
+    p.pregnant=null;
+    p.stats.happy=clamp(p.stats.happy+10);
+    log(`A child was born — ${child.first} ${child.last}.`,'birth');
+    // let the player name them
+    const otherLast = preg.otherParent? (preg.otherParent.split(' ').slice(1).join(' ')||null):null;
+    if(p.id===G.cur) openNameChild(p, child, otherLast);
+  }
+}
+
+// ===== CHEATING / AFFAIRS =====
+function doAffair(p){
+  closeSheet();
+  const spouse=p.rels.find(r=>(r.kind==='Spouse'||r.kind==='Partner')&&r.alive);
+  if(!spouse){ log(`${p.first} isn't committed to anyone — no one to cheat on.`,'muted'); render(); return; }
+  const sx=partnerSex(p); const affairName=newFirst(sx)+' '+pick(LAST);
+  p.stats.happy=clamp(p.stats.happy+5);
+  // record the affair
+  p.partnerHistory.push({id:nid(), name:affairName, sex:sx, from:G.year, to:G.year, status:'Affair', kids:0});
+  // pregnancy from the affair?
+  let affairPreg=false;
+  if(canCarry(p) && !p.pregnant && chance(conceptionOdds(p)*0.7)){
+    p.pregnant={ father:affairName, conceivedYear:G.year, carrier:'self', otherParent:affairName, fromAffair:true };
+    affairPreg=true;
+  }
+  // chance of getting caught
+  const caught = chance(35 - (p.traits.includes('sly')?12:0) + (p.stats.smarts>65?-8:0));
+  if(caught){
+    spouse.bond=clamp(spouse.bond-40);
+    log(`${p.first} was caught having an affair with ${affairName.split(' ')[0]}. ${spouse.name.split(' ')[0]} is devastated.`,'bad');
+    // offer to make amends or let it fall apart
+    offerAffairFallout(p, spouse, affairPreg, affairName);
+    return;
+  }
+  log(`${p.first} had a secret affair with ${affairName.split(' ')[0]}. No one knows… yet.`,'muted');
+  if(affairPreg){
+    // secret pregnancy — offer to hide it
+    offerHideAffairPregnancy(p, spouse, affairName);
+  } else {
+    render();
+  }
+}
+
+function offerAffairFallout(p, spouse, affairPreg, affairName){
+  const opts=[];
+  opts.push(O('🙏','Beg for forgiveness','try to save it',0,()=>{ closeSheet();
+    if(spouse.bond>10 && chance(40)){ spouse.bond=clamp(spouse.bond+15); log(`${spouse.name.split(' ')[0]} agreed to work through it. A long road back to trust.`,'muted'); }
+    else { doBreakup(p, spouse); log(`${spouse.name.split(' ')[0]} couldn't forgive ${p.first}. It's over.`,'bad'); }
+    if(affairPreg) log(`To make matters worse, ${p.first} is now pregnant from the affair.`,'bad');
+    render();
+  }));
+  opts.push(O('🚪','Leave for the new lover','blow it all up',0,()=>{ closeSheet();
+    doBreakup(p, spouse);
+    const fr={name:affairName,kind:'Partner',sex:partnerSex(p),bond:55+rnd(20),alive:true,id:nid()}; p.rels.push(fr);
+    log(`${p.first} left ${spouse.name.split(' ')[0]} for ${affairName.split(' ')[0]}. A new chapter, messy as it is.`,'muted');
+    render();
+  }));
+  let html=`<div class="grab"></div><h3>Caught cheating</h3><p class="hint">${spouse.name.split(' ')[0]} knows everything. What now?</p>`;
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+
+function offerHideAffairPregnancy(p, spouse, affairName){
+  const opts=[];
+  opts.push(O('🤫','Pass it off as your partner\'s','risky deception',0,()=>{ closeSheet();
+    setFlag(p,'hidingAffairChild'); log(`${p.first} decided to raise the child as ${spouse.name.split(' ')[0]}'s, burying the secret.`,'muted'); render();
+  }));
+  opts.push(O('🏥','See a doctor about options','your choice',0,()=>{ closeSheet(); openPrenatalOptions(p); }));
+  opts.push(O('😶','Come clean to your partner','honest, painful',0,()=>{ closeSheet();
+    spouse.bond=clamp(spouse.bond-45);
+    if(chance(25)){ spouse.bond=clamp(spouse.bond+10); log(`${p.first} confessed everything. Miraculously, ${spouse.name.split(' ')[0]} is willing to try to stay.`,'muted'); }
+    else { doBreakup(p, spouse); log(`${p.first} confessed the affair and the pregnancy. ${spouse.name.split(' ')[0]} walked out.`,'bad'); }
+    render();
+  }));
+  let html=`<div class="grab"></div><h3>A secret pregnancy</h3><p class="hint">${p.first} is pregnant from the affair. ${spouse.name.split(' ')[0]} doesn't know.</p>`;
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+
+// prenatal care / abortion options (from Health tab or affair flow)
+function openPrenatalOptions(p){
+  closeSheet();
+  if(!p.pregnant){ log(`${p.first} isn't expecting.`,'muted'); render(); return; }
+  const preg=p.pregnant;
+  const withinWindow = G.year <= preg.conceivedYear; // first year only
+  const opts=[];
+  opts.push(O('💗','Prenatal care','-$, healthier baby',0,()=>{ closeSheet();
+    const c=p.insured?500:Math.min(p.money,4000); p.money-=c; setFlag(p,'prenatalCare'); p.stats.health=clamp(p.stats.health+2);
+    log(`${p.first} is getting good prenatal care. Giving the baby the best start.`,'good'); render();
+  }));
+  if(withinWindow){
+    opts.push(O('⚕️','End the pregnancy','within the window',0,()=>{ closeSheet();
+      const c=p.insured?600:Math.min(p.money,2000); p.money-=c;
+      p.pregnant=null; clearFlag(p,'hidingAffairChild'); p.stats.happy=clamp(p.stats.happy-4);
+      log(`${p.first} chose to end the pregnancy. A private, personal decision.`,'muted'); render();
+    }));
+  } else {
+    opts.push(OH('Too far along now — the pregnancy will continue to term.'));
+  }
+  let html=`<div class="grab"></div><h3>Your pregnancy</h3><p class="hint">Conceived ${G.year-preg.conceivedYear===0?'this year':'last year'}${preg.fromAffair?' · from the affair':''}</p>`;
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+
 
 function openPartnerHistory(p){
   closeSheet();
@@ -3838,6 +4019,12 @@ function openHealth(){
     }, p.money<cost));
   }
 
+  // pregnancy care
+  if(p.pregnant){
+    opts.push(OH('— Expecting —'));
+    opts.push(O('🤰','Pregnancy & prenatal care','prenatal care or other options',0,()=>{ closeSheet(); openPrenatalOptions(p); }));
+  }
+
   // therapy / stress
   opts.push(O('🛋','Go to therapy','−stress, +joy · $1,200',0,()=>{
     p.money-=Math.min(p.money,1200); p.stress=clamp(p.stress-25); p.stats.happy=clamp(p.stats.happy+8);
@@ -3935,6 +4122,7 @@ function openSelf(){
     ${(p.partnerHistory&&p.partnerHistory.filter(h=>h.status==='Ex-spouse').length)?`<br>${p.partnerHistory.filter(h=>h.status==='Ex-spouse').length} ex-spouse(s) · ${p.partnerHistory.filter(h=>h.status==='Fling').length} past fling(s)`:''}
     ${p.onSocial?`<br>${p.socialFollowers.toLocaleString()} social followers`:''}
     ${p.addictions&&p.addictions.length?`<br><span style="color:var(--blood)">Struggling with: ${p.addictions.map(a=>{const d=ADDICT(a.k);return d?d.e+' '+d.l+(a.sev>1?' ('+(a.sev>2?'severe':'worsening')+')':''):a.k;}).join(', ')}</span>`:''}
+    ${p.pregnant?`<br><span style="color:var(--rose)">🤰 Expecting${p.pregnant.fromAffair?' (from an affair)':''}</span>`:''}
     ${p.record.length?`<br>Record: ${p.record.join(', ')}`:''}
     ${p.ruler?`<br><span style="color:var(--gold)">${p.ruler.title} of ${p.ruler.country} 👑</span>`:''}
     ${p.fightRecord?`<br><span style="color:var(--sage)">Fight record: ${p.fightRecord.w}-${p.fightRecord.l}${p.champion?' · 🏆 CHAMPION':''}</span>`:''}
