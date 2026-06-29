@@ -149,9 +149,10 @@ header{
   width:calc(100% - 36px); max-width:420px; background:var(--panel);
   border:1px solid var(--line); border-radius:18px; padding:24px 22px;
   margin:auto; animation:pop .25s cubic-bezier(.2,.9,.3,1);
+  max-height:calc(100vh - 36px); overflow-y:auto; -webkit-overflow-scrolling:touch;
 }
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}
-.scrim.center{align-items:center; padding:18px}
+.scrim.center{align-items:center; padding:18px; overflow-y:auto}
 .cmodal h2{font-size:24px; margin-bottom:6px; letter-spacing:.3px}
 .cmodal p{color:var(--ink-dim); font-size:14px; line-height:1.55; margin-bottom:8px}
 .cmodal .big-emoji{font-size:46px; text-align:center; margin-bottom:8px}
@@ -579,6 +580,8 @@ function blankPerson(opt={}){
     livesSaved:0,      // running tally of people saved
     henchman:null,     // {name, loyalty} — villain's named lieutenant
     minions:0,         // size of the villain's crew
+    territory:0,       // crime-lord turf controlled (0-100)
+    rackets:[],        // active criminal enterprises
     minionPower:0,     // crew capability (0-100), boosts income/escape/evasion
     doomsdayLevel:0,   // 0 none, 1 built, 2 armed, 3 world-threatening
     heat:0,            // villain notoriety/police attention
@@ -666,6 +669,8 @@ function migrate(){
     if(p.livesSaved==null) p.livesSaved=0;
     if(p.henchman===undefined) p.henchman=null;
     if(p.minions==null) p.minions=0;
+    if(p.territory==null) p.territory=0;
+    if(!p.rackets) p.rackets=[];
     if(p.minionPower==null) p.minionPower=0;
     if(p.doomsdayLevel==null) p.doomsdayLevel = hasFlag(p,'hasDoomsday')?1:0;
     if(p.heat==null) p.heat=0;
@@ -1277,6 +1282,12 @@ function runJob(p){
       // pay scales with stage; villains (base 0) earn through heists scaled to their stage
       const heistBase = c.base>0 ? c.base : 40000;
       pay=Math.round(heistBase*Math.max(0.4,st.mult)*(0.8+Math.random()*0.5));
+      // crime-lord rackets and territory provide steady income on top of scores
+      if(p.job==='crimelord'){
+        const racketIncome=(p.rackets||[]).reduce((s,r)=>s+(r.income||0),0);
+        const turfIncome=Math.round((p.territory||0)*4000);
+        pay+=racketIncome+turfIncome;
+      }
       // a crew of minions running rackets boosts the villain's take significantly
       if(p.minions>0){ const cut=Math.round(p.minions*(8000+(p.minionPower||0)*400)); pay+=cut; }
       p.salary=pay;
@@ -2911,6 +2922,43 @@ function pruneTree(p){
     G.people.forEach(x=>{ if(x.childrenIds) x.childrenIds=x.childrenIds.filter(id=>!removeIds.has(id)); });
   }
 }
+// Build a recap of a life's biggest moments, achievements, and choices
+function lifeSummary(p){
+  const items=[];
+  // peak stats / character
+  const peakJob = p.job!=='none'?CAREER(p.job).l:(p._everJob||null);
+  // achievements derived from flags and state
+  if(p.jobTitle && p.job!=='none') items.push(`Rose to ${p.jobTitle}`);
+  else if(p.job!=='none') items.push(`Worked as a ${CAREER(p.job).l}`);
+  if(p.champion) items.push('Became a champion');
+  if(hasFlag(p,'nbaChamp')||hasFlag(p,'superbowlChamp')||hasFlag(p,'soccerChamp')) items.push('Won a pro sports title');
+  if(hasFlag(p,'aListActor')) items.push('Became an A-list movie star');
+  if(p.onSocial && p.socialFollowers>100000) items.push(`Amassed ${(p.socialFollowers).toLocaleString()} followers`);
+  if(p.ruler) items.push(`Ruled ${p.ruler.country} as ${p.ruler.title}`);
+  if((p.livesSaved||0)>0) items.push(`Saved ${p.livesSaved.toLocaleString()} lives as a hero`);
+  if(p.nemesis && p.nemesis.defeated>0) items.push(`Battled the villain ${p.nemesis.name}`);
+  if((p.minions||0)>0) items.push(`Commanded a crew of ${p.minions}`);
+  if(p.doomsdayLevel>=2) items.push('Held the world to ransom');
+  if(p.powers && p.powers.length) items.push(`Wielded powers: ${p.powers.slice(0,3).join(', ')}`);
+  if(p.prisonRole==='shotcaller') items.push('Ran a prison from the inside');
+  if((p.businesses||[]).length) items.push(`Owned ${p.businesses.length} business${p.businesses.length===1?'':'es'}`);
+  if(hasFlag(p,'philanthropist')) items.push('Gave generously to those in need');
+  if(hasFlag(p,'whistleblower')) items.push('Blew the whistle on corruption');
+  if(hasFlag(p,'corrupt')||hasFlag(p,'taxCheat')||hasFlag(p,'fraudster')) items.push('Bent the rules for personal gain');
+  if(p.record && p.record.length) items.push(`Criminal record: ${[...new Set(p.record)].slice(0,3).join(', ')}`);
+  if(p.addictions && p.addictions.length) items.push(`Struggled with ${p.addictions.map(a=>{const d=ADDICT(a.k);return d?d.l:a.k;}).join(', ')}`);
+  if(p.acqTraits && p.acqTraits.length){ const goods=p.acqTraits.map(k=>ACQ(k)).filter(t=>t&&t.good); if(goods.length) items.push(`Known for being ${goods.slice(0,2).map(t=>t.l.toLowerCase()).join(' and ')}`); }
+  // relationships
+  const exes=(p.partnerHistory||[]).filter(h=>h.status==='Ex-spouse'||h.status==='Affair').length;
+  const marriages=(p.partnerHistory||[]).filter(h=>h.status==='Spouse'||h.status==='Ex-spouse'||h.status==='Late spouse').length;
+  if(marriages>0) items.push(`Married ${marriages} time${marriages===1?'':'s'}`);
+  if(exes>1) items.push('A complicated love life');
+  if(p.childrenIds.length) items.push(`Raised ${p.childrenIds.length} child${p.childrenIds.length===1?'':'ren'}`);
+  // pull a few of the biggest logged moments (big/birth/world events)
+  const bigMoments=(p.log||[]).filter(e=>e.k==='big').map(e=>e.t);
+  return { achievements: items, moments: bigMoments };
+}
+
 function heirsOf(p){
   // direct children first
   const kids = p.childrenIds.map(id=>findP(G,id)).filter(k=>k&&k.alive);
@@ -2928,20 +2976,40 @@ function heirsOf(p){
 function deathScreen(deceased){
   const heirs = heirsOf(deceased);
   const estate = deceased.estate ?? deceased.money;
+  const sum = lifeSummary(deceased);
+  const cause = deceased._causeOfDeath || 'passed away';
+  // children list (named) for the recap
+  const kids = deceased.childrenIds.map(id=>findP(G,id)).filter(Boolean);
+  const kidLine = kids.length? kids.map(k=>`${k.first}${k.alive?'':' (deceased)'}`).join(', ') : 'no children';
+
+  const achHtml = sum.achievements.length
+    ? `<div style="text-align:left;margin-top:14px">
+         <div style="font-size:11px;color:var(--gold);letter-spacing:1.5px;font-variant:small-caps;margin-bottom:6px">A life lived</div>
+         ${sum.achievements.map(a=>`<div style="font-size:13px;color:var(--ink);padding:3px 0;border-bottom:1px solid var(--line)">• ${a}</div>`).join('')}
+       </div>` : '';
+  const momentsHtml = sum.moments.length
+    ? `<div style="text-align:left;margin-top:14px">
+         <div style="font-size:11px;color:var(--gold);letter-spacing:1.5px;font-variant:small-caps;margin-bottom:6px">Defining moments</div>
+         ${sum.moments.slice(-6).map(m=>`<div style="font-size:12.5px;color:var(--ink-dim);padding:3px 0;font-style:italic">${m}</div>`).join('')}
+       </div>` : '';
+
   root.innerHTML=`
   <div class="scrim center">
     <div class="cmodal" style="text-align:center">
       <div class="big-emoji">🕯</div>
       <h2>${deceased.first} ${deceased.last}</h2>
       <p>${deceased.born}–${G.year} · lived ${deceased.deathAge} years</p>
-      <p style="color:var(--ink-dim);font-size:13px">${EDU[deceased.edu]}${deceased.job!=='none'?' · '+CAREER(deceased.job).l:''} · ${deceased.childrenIds.length} child${deceased.childrenIds.length===1?'':'ren'}${deceased.record.length?' · had a record':''}</p>
+      <p style="color:var(--ink-dim);font-size:13px">${EDU[deceased.edu]}${deceased.job!=='none'?' · '+CAREER(deceased.job).l:''}</p>
+      <p style="color:var(--ink-dim);font-size:13px">Children: ${kidLine}</p>
       <p style="color:var(--gold)">Estate worth ${money(estate)}${heirs.length?', and '+heirs.length+' to carry it on.':'.'}</p>
+      ${achHtml}
+      ${momentsHtml}
       <div id="heirpick"></div>
     </div>
   </div>`;
   const hp=$('#heirpick');
   if(heirs.length){
-    hp.insertAdjacentHTML('beforeend',`<p style="margin-top:12px;color:var(--ink-dim)">Take up the thread as…</p><div class="choosecards" id="hc"></div>`);
+    hp.insertAdjacentHTML('beforeend',`<p style="margin-top:16px;color:var(--ink-dim)">Take up the thread as…</p><div class="choosecards" id="hc"></div>`);
     const inherit = Math.floor(estate/heirs.length);
     heirs.forEach(h=>{
       const c=document.createElement('button'); c.className='ccard';
@@ -2950,7 +3018,7 @@ function deathScreen(deceased){
       $('#hc').appendChild(c);
     });
   } else {
-    hp.insertAdjacentHTML('beforeend',`<p style="margin-top:14px;color:var(--ink-dim)">The bloodline ends here. No heirs survive.</p>
+    hp.insertAdjacentHTML('beforeend',`<p style="margin-top:16px;color:var(--ink-dim)">The bloodline ends here. No heirs survive.</p>
     <button class="btn gold" id="ng">Begin a New Bloodline</button>`);
     $('#ng').onclick=()=>{ wipe(); creator(); };
   }
@@ -3549,6 +3617,34 @@ const CAREER_CHOICES = {
     O('🗳','Run for higher office','+power',0,()=>{ closeSheet(); const odds=30+(p.stats.fame>40?25:0)+(p.stats.charming>60?20:0)+(p.money>500000?10:0); if(chance(odds)){ p.jobTitle='Senator'; p.salary=Math.round(p.salary*1.4); p.stats.fame=clamp(p.stats.fame+15); log(`${p.first} won the election and climbed to higher office.`,'big'); } else log(`${p.first} lost the race. Politics is brutal.`,'bad'); render(); }),
     O('🤝','Take corporate donations','+$, owes favors',0,()=>{ closeSheet(); const don=100000+rnd(900000); p.money+=don; setFlag(p,'boughtPolitician'); log(`${p.first} accepted ${money(don)} in "donations." Strings attached.`,'muted'); render(); }),
     O('📜','Champion a popular bill','+fame',0,()=>{ closeSheet(); p.stats.fame=clamp(p.stats.fame+8); setFlag(p,'goodHeart'); worldEvent(p,`${p.first} passed landmark legislation that helped millions.`,{hope:true}); log(`${p.first}'s signature bill passed. A legacy in the making.`,'good'); render(); }),
+  ],
+  crimelord: (p)=>{
+    const RACKETS=[['🎲','Illegal gambling den',60000],['💊','Drug distribution',120000],['💵','Money laundering',200000],['🔫','Arms trafficking',400000],['🏗','Construction shakedowns',150000]];
+    const arr=[];
+    arr.push(O('🗺',`Expand your territory (${Math.round(p.territory||0)}%)`,'seize turf from rivals',0,()=>{ closeSheet();
+      const win=chance(55+(p.minions||0)*2+(p.traits.includes('sly')?10:0));
+      if(win){ p.territory=clamp((p.territory||0)+8+rnd(10)); p.salary=Math.round(p.salary*1.1); log(`${p.first}'s crew took over more blocks. The territory grows.`,'big'); }
+      else { p.stats.health=clamp(p.stats.health-10); log(`A turf war turned bloody — ${p.first} held the line but took losses.`,'bad'); }
+      render(); }));
+    // open a racket the player doesn't have
+    const owned=(p.rackets||[]).map(r=>r.name);
+    const avail=RACKETS.filter(r=>!owned.includes(r[1]));
+    if(avail.length){ const r=avail[0];
+      arr.push(O(r[0],`Open: ${r[1]}`,`${money(r[2])} · adds yearly income`,0,()=>{ closeSheet(); if(p.money<r[2]){log(`${p.first} needs ${money(r[2])} to set that up.`,'muted');render();return;} p.money-=r[2]; if(!p.rackets)p.rackets=[]; p.rackets.push({name:r[1],income:Math.round(r[2]*0.6)}); log(`${p.first} set up a ${r[1].toLowerCase()} operation. The money will flow.`,'big'); render(); }));
+    }
+    arr.push(O('🪙','Collect protection money','+$ from your turf',0,()=>{ closeSheet(); const take=Math.round((p.territory||0)*3000+(p.rackets||[]).length*15000+rnd(40000)); p.money+=take; p.heat=(p.heat||0)+5; log(`${p.first}'s enforcers collected ${money(take)} in tribute.`,'good'); render(); }));
+    arr.push(O('🤵','Bribe officials','-$, lowers heat & bust risk',0,()=>{ closeSheet(); const c=Math.min(p.money,50000+rnd(150000)); p.money-=c; p.heat=Math.max(0,(p.heat||0)-30); setFlag(p,'ownsOfficials'); log(`${p.first} put cops and judges on the payroll. The law looks away.`,'muted'); render(); }));
+    arr.push(O('🗡','Order a hit on a rival','ruthless, risky',0,()=>{ closeSheet(); if(chance(70)){ p.territory=clamp((p.territory||0)+6); setFlag(p,'ruthless'); log(`${p.first}'s rival was eliminated. The territory is quieter now.`,'big'); } else { p.heat=(p.heat||0)+25; p.record.push('Murder investigation'); log(`The hit went wrong and brought serious heat on ${p.first}.`,'bad'); } render(); }));
+    return arr;
+  },
+  madsci: (p)=>[
+    O('🧪','Run a dangerous experiment','+smarts, world consequences',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+5);
+      if(chance(30)){ p.stats.health=clamp(p.stats.health-15); log(`The experiment exploded. ${p.first} barely survived.`,'bad'); }
+      else { worldEvent(p, pick([`${p.first} created artificial life in the lab.`,`${p.first} reanimated dead tissue.`,`${p.first} built a weather machine.`,`${p.first} engineered a glowing new species.`]), {weird:true}); log(`${p.first}'s experiment succeeded — and changed what's possible.`,'big'); }
+      render(); }),
+    O('💰','Sell tech to the highest bidder','+$$, ethically grey',0,()=>{ closeSheet(); const sale=200000+rnd(3000000); p.money+=sale; setFlag(p,'soldDangerousTech'); log(`${p.first} sold cutting-edge tech for ${money(sale)}. Who's buying… and why?`,'muted'); render(); }),
+    O('🤖','Build a loyal creation','an assistant or guardian',0,()=>{ closeSheet(); p.stats.smarts=clamp(p.stats.smarts+3); if(!p.henchman){ p.henchman={name:'Subject-'+(1+rnd(99)),loyalty:100}; log(`${p.first} created ${p.henchman.name}, a loyal artificial being.`,'big'); } else log(`${p.first} improved their creation.`,'good'); render(); }),
+    O('🏆','Publish for a Nobel Prize','+fame, legitimacy',0,()=>{ closeSheet(); if(p.stats.smarts>80&&chance(35)){ p.stats.fame=clamp(p.stats.fame+25); setFlag(p,'nobelLaureate'); worldEvent(p,`${p.first} won the Nobel Prize for a stunning breakthrough.`,{hope:true}); log(`🏆 ${p.first} won the NOBEL PRIZE. From mad genius to celebrated mind.`,'big'); } else log(`${p.first}'s work was deemed too dangerous to honor. For now.`,'muted'); render(); }),
   ],
 };
 // careers that share a choice set
@@ -4359,6 +4455,7 @@ function openSelf(){
     ${p.sidekick?`<br><span style="color:var(--sage)">Sidekick: ${p.sidekick.name} (bond ${Math.round(p.sidekick.bond)})</span>`:''}
     ${p.nemesis?`<br><span style="color:var(--blood)">Nemesis: ${p.nemesis.name} (defeated ${p.nemesis.defeated}×)</span>`:''}
     ${p.henchman?`<br><span style="color:var(--gold)">Henchman: ${p.henchman.name} (loyalty ${Math.round(p.henchman.loyalty)})</span>`:''}
+    ${p.job==='crimelord'&&((p.territory||0)>0||(p.rackets||[]).length)?`<br><span style="color:var(--gold)">Turf: ${Math.round(p.territory||0)}% · ${(p.rackets||[]).length} racket${(p.rackets||[]).length===1?'':'s'}</span>`:''}
     ${p.minions>0?`<br><span style="color:var(--gold)">Crew: ${p.minions} minions · power ${Math.round(p.minionPower||0)}</span>`:''}
     ${p.doomsdayLevel>0?`<br><span style="color:var(--blood)">Doomsday device: ${['','built','ARMED','WORLD THREAT'][p.doomsdayLevel]}</span>`:''}
     ${p.job==='villain'&&p.heat?`<br><span style="color:var(--blood)">Heat: ${p.heat} 🔥</span>`:''}
