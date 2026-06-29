@@ -296,6 +296,29 @@ function addTrait(p,k,silent){
 }
 function removeTrait(p,k){ if(p.acqTraits) p.acqTraits=p.acqTraits.filter(x=>x!==k); }
 
+// ---------------- addictions ----------------
+// p.addictions is an array of {k, sev} (severity 1-3). Old saves used a single p.addiction string.
+const ADDICTIONS=[
+  {k:'alcohol',   l:'alcohol',        e:'🍺', health:-2.5, happy:-1.0, quit:8,  rehab:'$8,000'},
+  {k:'cocaine',   l:'cocaine',        e:'❄️', health:-4.5, happy:-1.5, quit:5,  rehab:'$15,000'},
+  {k:'party_drugs',l:'party drugs',   e:'💊', health:-3.5, happy:-1.0, quit:7,  rehab:'$12,000'},
+  {k:'painkillers',l:'painkillers',   e:'💉', health:-5.0, happy:-1.8, quit:4,  rehab:'$18,000'},
+  {k:'gambling',  l:'a gambling habit',e:'🎰', health:-1.0, happy:-2.0, quit:9,  rehab:'$10,000'},
+  {k:'nicotine',  l:'nicotine',       e:'🚬', health:-2.0, happy:-0.5, quit:10, rehab:'$5,000'},
+];
+const ADDICT=k=>ADDICTIONS.find(a=>a.k===k);
+function hasAddiction(p,k){ return (p.addictions||[]).some(a=>a.k===k); }
+function addAddiction(p,k,silent){
+  if(!p.addictions) p.addictions=[];
+  const a=ADDICT(k); if(!a) return false;
+  const existing=p.addictions.find(x=>x.k===k);
+  if(existing){ existing.sev=Math.min(3, existing.sev+1); if(!silent)log(`${p.first}'s ${a.l} habit is getting worse.`,'bad'); return false; }
+  p.addictions.push({k, sev:1});
+  if(!silent) log(`${p.first} developed a dependence on ${a.l}.`,'bad');
+  return true;
+}
+function clearAddiction(p,k){ if(p.addictions) p.addictions=p.addictions.filter(a=>a.k!==k); }
+
 /* ---------------- careers ----------------
    tier gates by education; pay grows with years */
 const CAREERS=[
@@ -568,6 +591,7 @@ function blankPerson(opt={}){
     prisonRep:0,       // reputation/respect inside (0-100)
     prisonRole:null,   // 'network','shotcaller','warden-favored', etc.
     addiction:null,
+    addictions:[],     // [{k,sev}] structured addictions
     conditions:[], // chronic health conditions
     seeds:[],      // delayed consequences {dueAge, kind, data}
     flags:{},      // memory of past choices for branching
@@ -640,6 +664,7 @@ function migrate(){
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
+    if(!p.addictions){ p.addictions=[]; if(p.addiction){ const map={drinking:'alcohol',partying:'party_drugs','party drugs':'party_drugs'}; const k=map[p.addiction]||'alcohol'; if(ADDICT(k))p.addictions.push({k,sev:1}); } }
     if(p.insured==null) p.insured=false;
     if(p.inPrison==null) p.inPrison=false;
     if(p.prisonRep==null) p.prisonRep=0;
@@ -1071,8 +1096,20 @@ function systemsTick(p){
   // stress bleeds into health
   if(p.stress>60){ p.stats.health=clamp(p.stats.health-(p.stress-60)*0.08); if(chance(6)){p.conditions.push('high blood pressure');log(`Years of stress caught up — ${p.first} was diagnosed with high blood pressure.`,'bad');p.stress=clamp(p.stress-20);} }
   p.stress=clamp(p.stress-3);
-  // addiction
-  if(p.addiction){ p.stats.health=clamp(p.stats.health-2); p.stats.happy=clamp(p.stats.happy-1); if(chance(7)){p.addiction=null;log(`${p.first} finally beat their ${'addiction'}. Hard-won.`,'big');p.stats.happy=clamp(p.stats.happy+10);} }
+  // addictions (each drags stats; small yearly chance to beat one, severity makes it harder)
+  if(p.addictions && p.addictions.length){
+    p.addictions.slice().forEach(a=>{
+      const d=ADDICT(a.k); if(!d) return;
+      p.stats.health=clamp(p.stats.health + d.health*a.sev*0.5);
+      p.stats.happy=clamp(p.stats.happy + d.happy*a.sev*0.5);
+      // gambling bleeds money
+      if(a.k==='gambling' && chance(40)){ const loss=Math.min(p.money, (1000+rnd(8000))*a.sev); p.money-=loss; }
+      // chance to quit on their own
+      if(chance(d.quit/a.sev)){ clearAddiction(p,a.k); log(`${p.first} finally beat their ${d.l} habit. Hard-won.`,'big'); p.stats.happy=clamp(p.stats.happy+10); }
+      // small chance a severe addiction turns deadly
+      else if(a.sev>=3 && p.stats.health<25 && chance(8)){ p.stats.health=clamp(p.stats.health-20); log(`${p.first}'s ${d.l} addiction nearly killed them — a terrifying overdose scare.`,'bad'); }
+    });
+  }
   // assets depreciate / appreciate
   p.assets.forEach(a=>{ if(a.kind==='car') a.value=Math.round(a.value*0.88); else if(a.kind==='house') a.value=Math.round(a.value*(1.01+Math.random()*0.06)); });
   // pets age + give comfort (health & happiness)
@@ -1928,7 +1965,7 @@ const CHOICE_EVENTS = [
     body:p=>`The club is electric tonight. A stranger offers ${p.first} something — a dare, a drink, an opportunity.`,
     choices:[
       {label:'Dance till dawn', sub:'+joy', effect:p=>{ fx(p,{happy:10,health:-3}); return `${p.first} danced like nobody was watching. Pure bliss.`;}},
-      {label:'Take the mystery pill', sub:'risky', effect:p=>{ if(chance(35)){ fx(p,{health:-15,happy:-8}); if(chance(40))p.addiction='party drugs'; return `Bad trip. ${p.first} woke up somewhere strange.`;} fx(p,{happy:12}); return `${p.first} had the night of their life. No regrets.`;}},
+      {label:'Take the mystery pill', sub:'risky', effect:p=>{ if(chance(35)){ fx(p,{health:-15,happy:-8}); if(chance(40))addAddiction(p,'party_drugs',true); return `Bad trip. ${p.first} woke up somewhere strange.`;} fx(p,{happy:12}); return `${p.first} had the night of their life. No regrets.`;}},
       {label:'Network with the VIPs', sub:'+connections', effect:p=>{ if(chance(45)){ const inc=5000+rnd(40000); fx(p,{money:inc,fame:4}); return `${p.first} charmed the right person — ${money(inc)} opportunity.`;} return `${p.first} schmoozed but nothing came of it.`;}},
       {label:'Leave early', sub:'+health', effect:p=>{ fx(p,{health:4,happy:2}); return `${p.first} called it an early night. Responsible.`;}},
     ]},
@@ -2020,7 +2057,7 @@ const CHOICE_EVENTS = [
     when:p=>p.age>=45&&p.stats.health<60, weight:2,
     body:p=>`The doctor sits ${p.first} down. The numbers aren't good. Something has to change.`,
     choices:[
-      {label:'Overhaul your life', sub:'+health, hard', effect:p=>{ fx(p,{health:14,happy:-3,stress:-10}); if(p.addiction){p.addiction=null;} return `${p.first} cleaned up their act completely. A second chance at life.`;}},
+      {label:'Overhaul your life', sub:'+health, hard', effect:p=>{ fx(p,{health:14,happy:-3,stress:-10}); if(p.addictions&&p.addictions.length){p.addictions=[];} return `${p.first} cleaned up their act completely. A second chance at life.`;}},
       {label:'Make small changes', sub:'+a little health', effect:p=>{ fx(p,{health:5}); return `${p.first} made a few changes. Better than nothing.`;}},
       {label:'Ignore the warning', sub:'risky', effect:p=>{ fx(p,{health:-8}); seed(p,2,'health_neglect'); return `${p.first} brushed it off. The body keeps the score.`;}},
     ]},
@@ -2092,6 +2129,41 @@ const CHOICE_EVENTS = [
       {label:'Buy them a meal and coat', sub:'-$, +joy', effect:p=>{ const c=Math.min(p.money,60); fx(p,{money:-c,happy:9}); setFlag(p,'goodHeart'); return `${p.first} made sure a stranger was warm and fed tonight. It mattered more than money.`;}},
       {label:'Hand them some cash', sub:'-$, +kind', effect:p=>{ const c=Math.min(p.money,20); fx(p,{money:-c,happy:5}); return `${p.first} gave what they could and wished them well.`;}},
       {label:'Walk past', sub:'-conscience', effect:p=>{ fx(p,{happy:-3}); return `${p.first} kept walking, telling themselves someone else would help.`;}},
+    ]},
+  // ========== INFLUENCER / FAME LIFESTYLE ==========
+  { id:'inf_party_scene', emoji:'🥳', title:'The party scene', 
+    when:p=>p.onSocial&&p.socialFollowers>20000&&p.age>=18&&!p.inPrison, weight:2.5,
+    body:p=>`${p.first}'s clout gets them into every exclusive party. Tonight the drinks are flowing and there's more on offer in the back room.`,
+    choices:[
+      {label:'Party responsibly', sub:'+joy', effect:p=>{ fx(p,{happy:8,fame:2}); return `${p.first} had a great night and kept it together.`;}},
+      {label:'Drink heavily', sub:'+joy, risk', effect:p=>{ fx(p,{happy:6,health:-4}); if(chance(35))addAddiction(p,'alcohol'); return `${p.first} drank like there was no tomorrow.`;}},
+      {label:'Try the cocaine', sub:'risky thrill', effect:p=>{ fx(p,{happy:10,health:-6}); if(chance(50))addAddiction(p,'cocaine'); return `${p.first} did a few lines and felt invincible. For now.`;}},
+      {label:'Stay home and post instead', sub:'+followers', effect:p=>{ p.socialFollowers+=rnd(8000); fx(p,{fame:2}); return `${p.first} skipped the party and worked on content. The grind never stops.`;}},
+    ]},
+  { id:'inf_cancel', emoji:'📉', title:'Cancelled', once:true,
+    when:p=>p.onSocial&&p.socialFollowers>80000, weight:1.6,
+    body:p=>`An old post of ${p.first}'s resurfaces and the internet is furious. The hashtags are trending.`,
+    choices:[
+      {label:'Post a sincere apology', sub:'+recovery', effect:p=>{ if(chance(60)){ fx(p,{fame:-4,happy:-4}); return `${p.first}'s apology was accepted by most. The storm passed.`;} const loss=Math.round(p.socialFollowers*0.3); p.socialFollowers-=loss; fx(p,{happy:-10}); return `The apology was called fake. ${p.first} lost ${loss.toLocaleString()} followers.`;}},
+      {label:'Double down defiantly', sub:'risky', effect:p=>{ if(chance(40)){ const g=Math.round(p.socialFollowers*0.2); p.socialFollowers+=g; fx(p,{fame:6}); return `${p.first} refused to back down and a loyal base rallied — ${g.toLocaleString()} new followers.`;} const loss=Math.round(p.socialFollowers*0.5); p.socialFollowers-=loss; fx(p,{fame:-15,happy:-12}); return `It went nuclear. ${p.first} lost ${loss.toLocaleString()} followers and major sponsors.`;}},
+      {label:'Go quiet for a while', sub:'-followers, +health', effect:p=>{ p.socialFollowers=Math.round(p.socialFollowers*0.85); fx(p,{health:5,stress:-10}); return `${p.first} logged off and let it blow over. Healthier, if smaller.`;}},
+    ]},
+  { id:'inf_burnout', emoji:'🪫', title:'Influencer burnout', 
+    when:p=>p.onSocial&&p.socialFollowers>50000&&p.age>=20, weight:1.6,
+    body:p=>`The pressure to always be "on" is crushing ${p.first}. The algorithm is relentless.`,
+    choices:[
+      {label:'Push through it', sub:'+followers, -health', effect:p=>{ p.socialFollowers+=rnd(20000); fx(p,{stress:15,health:-6,happy:-4}); if(chance(20))addAddiction(p,'painkillers'); return `${p.first} kept grinding, no matter the cost.`;}},
+      {label:'Take a mental health break', sub:'+health', effect:p=>{ fx(p,{health:8,happy:10,stress:-20}); p.socialFollowers=Math.round(p.socialFollowers*0.92); return `${p.first} stepped back to breathe. The followers dipped, but the soul recovered.`;}},
+      {label:'Hire a content team', sub:'-$, sustainable', effect:p=>{ const c=Math.min(p.money,30000); fx(p,{money:-c,stress:-12}); setFlag(p,'contentTeam'); return `${p.first} built a team to share the load. A real business now.`;}},
+    ]},
+  // ========== ADDICTION SPIRAL (anyone with a habit) ==========
+  { id:'addiction_spiral', emoji:'🌀', title:'In too deep', 
+    when:p=>p.addictions&&p.addictions.length>0&&p.age>=16, weight:2,
+    body:p=>{const a=p.addictions[0];const d=ADDICT(a.k);return `${p.first}'s ${d?d.l:'habit'} is starting to run their life. Friends are worried.`;},
+    choices:[
+      {label:'Admit you need help', sub:'+recovery', effect:p=>{ const a=p.addictions[0]; const d=ADDICT(a.k); if(chance(55)){ clearAddiction(p,a.k); fx(p,{happy:8,health:6}); return `${p.first} reached out, got help, and beat the ${d?d.l:'habit'}. Brave.`;} fx(p,{happy:3}); if(a.sev>1)a.sev--; return `${p.first} took the first hard step toward getting clean.`;}},
+      {label:'Insist you can quit anytime', sub:'denial', effect:p=>{ const a=p.addictions[0]; a.sev=Math.min(3,a.sev+1); fx(p,{health:-6}); return `${p.first} brushed off the concern. The habit tightened its grip.`;}},
+      {label:'Lean in harder', sub:'self-destruct', effect:p=>{ const a=p.addictions[0]; a.sev=Math.min(3,a.sev+1); fx(p,{health:-12,happy:-6,money:-Math.min(p.money,5000)}); return `${p.first} spiraled further. It's getting dangerous.`;}},
     ]},
   // ========== SUPERPOWER ORIGINS (rare, for anyone) ==========
   { id:'power_accident', emoji:'⚡', title:'A freak accident', once:true,
@@ -2499,7 +2571,7 @@ function lifeEvents(p){
       ()=>{if(chance(50)){p.stats.fame=clamp(p.stats.fame+8);log(`${p.first} got cast in the school play and stole the show.`,'good');}else{p.stats.athletic=clamp(p.stats.athletic+8);log(`${p.first} made varsity.`,'good');}},
       ()=>{p.stats.health=clamp(p.stats.health-10);log(`A bad fall — broken arm. Months in a cast.`,'bad');},
       ()=>{p.stats.happy=clamp(p.stats.happy+9);log(`${p.first} got a driver's license and tasted freedom.`,'good');},
-      ()=>{if(chance(40)){p.addiction='partying';p.stats.happy=clamp(p.stats.happy+6);p.stats.health=clamp(p.stats.health-6);log(`${p.first} started partying a little too hard.`,'bad');}else log(`${p.first} went to a wild party and lived to tell it.`,'good');},
+      ()=>{if(chance(40)){addAddiction(p,'party_drugs',true);p.stats.happy=clamp(p.stats.happy+6);p.stats.health=clamp(p.stats.health-6);log(`${p.first} started partying a little too hard.`,'bad');}else log(`${p.first} went to a wild party and lived to tell it.`,'good');},
       ()=>{p.stats.smarts=clamp(p.stats.smarts+6);log(`${p.first} aced every exam this year.`,'good');},
       ()=>{p.stress=clamp(p.stress+15);log(`Exam season nearly broke ${p.first}.`,'bad');},
       ()=>{const f={name:newFirst(makeSex())+' '+pick(LAST),kind:'Friend',sex:makeSex(),bond:60+rnd(30),alive:true,id:nid()};p.rels.push(f);log(`${p.first} found a ride-or-die friend in ${f.name.split(' ')[0]}.`,'good');},
@@ -3315,7 +3387,7 @@ function openActivities(){
       const roll=rnd(100);
       if(roll<30 && !p.married){ const sx=partnerSex(p); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Partner',sex:sx,bond:40+rnd(25),alive:true,id:nid()}; p.rels.push(fr); log(`${p.first} hit it off with ${fr.name.split(' ')[0]} at the bar.`,'good'); }
       else if(roll<55){ const sx=makeSex(); const fr={name:newFirst(sx)+' '+pick(LAST),kind:'Friend',sex:sx,bond:45+rnd(25),alive:true,id:nid()}; p.rels.push(fr); log(`${p.first} made a new friend out on the town.`,'good'); }
-      else if(roll<70){ p.stats.health=clamp(p.stats.health-5); log(`${p.first} partied too hard and felt it for days.`,'bad'); if(chance(25))p.addiction='drinking'; }
+      else if(roll<70){ p.stats.health=clamp(p.stats.health-5); log(`${p.first} partied too hard and felt it for days.`,'bad'); if(chance(25))addAddiction(p,'alcohol',true); }
       else log(`${p.first} had a great night out.`,'good');
       render();
     }));
@@ -3324,13 +3396,90 @@ function openActivities(){
         p.onSocial=true; p.socialFollowers=rnd(300); closeSheet(); log(`${p.first} joined social media. The feed begins.`,'good'); render();
       }));
     } else {
-      opts.push(O('📱','Post content',`${p.socialFollowers.toLocaleString()} followers · grow it`,0,()=>{
+      const F=p.socialFollowers;
+      opts.push(OH(`— Influencing (${F.toLocaleString()} followers) —`));
+      opts.push(O('📱','Post content','grow your following',0,()=>{
         const g=rnd(2000)+(p.stats.looks>60?rnd(3000):0)+(p.traits.includes('charming')?rnd(2000):0);
         p.socialFollowers+=g; closeSheet();
         if(chance(12)){ p.socialFollowers+=20000+rnd(80000); p.stats.fame=clamp(p.stats.fame+8); log(`A post of ${p.first}'s blew up — followers poured in.`,'big'); }
         else log(`${p.first} posted and gained ${g.toLocaleString()} followers.`,'good');
         render();
       }));
+      opts.push(O('🎬','Make a viral video','high risk, high reward',0,()=>{
+        closeSheet();
+        const r=rnd(100);
+        if(r<35){ const boom=50000+rnd(400000); p.socialFollowers+=boom; p.stats.fame=clamp(p.stats.fame+12); log(`${p.first}'s video EXPLODED — ${boom.toLocaleString()} new followers.`,'big'); }
+        else if(r<55){ p.stats.happy=clamp(p.stats.happy-8); p.socialFollowers=Math.max(0,p.socialFollowers-rnd(15000)); log(`${p.first}'s attempt flopped and aged badly. Some unfollowed.`,'bad'); }
+        else { const g=rnd(8000); p.socialFollowers+=g; log(`${p.first}'s video did okay — ${g.toLocaleString()} followers.`,'muted'); }
+        render();
+      }));
+      if(F>=10000){
+        opts.push(O('🤝','Collab with another creator','+followers, +connections',0,()=>{
+          closeSheet(); const g=Math.round(F*(0.1+Math.random()*0.3))+rnd(5000); p.socialFollowers+=g;
+          if(chance(40)){ const fr={name:newFirst(makeSex())+' '+pick(LAST),kind:'Friend',sex:makeSex(),bond:50+rnd(20),alive:true,id:nid(),note:'fellow creator'}; p.rels.push(fr); log(`${p.first} collabed with ${fr.name.split(' ')[0]} — ${g.toLocaleString()} followers and a new connection.`,'good'); }
+          else log(`${p.first} collabed with another creator — ${g.toLocaleString()} followers.`,'good');
+          render();
+        }));
+      }
+      if(F>=25000){
+        opts.push(O('💰','Chase a sponsorship','cash in on your reach',0,()=>{
+          closeSheet();
+          if(chance(70)){ const deal=Math.round(F*(0.4+Math.random()*1.2)); p.money+=deal; log(`${p.first} landed a brand deal worth ${money(deal)}.`,'big'); }
+          else log(`${p.first} pitched brands all week — no bites this time.`,'muted');
+          render();
+        }));
+        opts.push(O('🛍','Launch a merch line','-$ upfront, maybe big',0,()=>{
+          closeSheet(); const cost=Math.min(p.money,10000); p.money-=cost;
+          if(chance(55)){ const rev=cost+Math.round(F*(0.3+Math.random())); p.money+=rev; log(`${p.first}'s merch sold out — ${money(rev)} in sales.`,'big'); }
+          else log(`${p.first}'s merch line barely moved. Live and learn.`,'bad');
+          render();
+        }));
+      }
+      if(F>=50000){
+        opts.push(O('🎙','Start a podcast','steady fame + income',0,()=>{
+          closeSheet(); setFlag(p,'hasPodcast'); p.stats.fame=clamp(p.stats.fame+6); const g=rnd(20000); p.socialFollowers+=g;
+          log(`${p.first} launched a podcast. ${g.toLocaleString()} followers tuned in.`,'good'); render();
+        }));
+        opts.push(O('🔥','Stir up some drama','+followers, -reputation',0,()=>{
+          closeSheet();
+          if(chance(55)){ const g=Math.round(F*(0.15+Math.random()*0.4)); p.socialFollowers+=g; p.stats.happy=clamp(p.stats.happy-4); log(`${p.first} started beef online — ${g.toLocaleString()} followers, but it's exhausting.`,'muted'); }
+          else { const loss=Math.round(F*(0.1+Math.random()*0.2)); p.socialFollowers=Math.max(0,p.socialFollowers-loss); p.stats.fame=clamp(p.stats.fame-6); log(`The drama backfired on ${p.first} — a wave of unfollows and a canceling.`,'bad'); }
+          render();
+        }));
+      }
+      // ENTERTAINMENT CROSSOVER — turn clout into screen deals
+      if(F>=80000){
+        opts.push(OH('— Hollywood comes calling —'));
+        opts.push(O('📺','Pursue a TV deal',F>=150000?'reality or hosting gig':'build more reach first',0,()=>{
+          closeSheet();
+          if(F<150000){ log(`${p.first} isn't quite big enough for TV yet. Keep growing.`,'muted'); render(); return; }
+          if(chance(55)){ const deal=80000+rnd(600000); p.money+=deal; p.stats.fame=clamp(p.stats.fame+12); setFlag(p,'tvStar'); log(`${p.first} landed a TV deal — ${money(deal)} and a new audience.`,'big'); }
+          else log(`The network passed on ${p.first}. For now.`,'muted');
+          render();
+        }, F<150000));
+        opts.push(O('🎞','Audition for a B-list movie','indie & genre films',0,()=>{
+          closeSheet();
+          if(chance(50)){ const deal=50000+rnd(400000); p.money+=deal; p.stats.fame=clamp(p.stats.fame+10); setFlag(p,'bListActor'); log(`${p.first} booked a B-list movie role — ${money(deal)}. Not Oscar bait, but it pays.`,'big'); }
+          else log(`${p.first} bombed the audition. Acting is harder than it looks.`,'bad');
+          render();
+        }));
+        if(F>=400000 || hasFlag(p,'bListActor')){
+          opts.push(O('🌟','Chase an A-list movie role','the big leagues',0,()=>{
+            closeSheet();
+            const odds = 25 + (p.stats.looks>65?12:0) + (hasFlag(p,'bListActor')?15:0) + (F>800000?10:0);
+            if(chance(odds)){ const deal=1000000+rnd(15000000); p.money+=deal; p.stats.fame=clamp(p.stats.fame+25); setFlag(p,'aListActor'); worldEvent(p,`${p.first} became a bona fide A-list movie star.`,{hope:true}); log(`🌟 ${p.first} LANDED AN A-LIST ROLE — ${money(deal)}. A real movie star now.`,'big'); }
+            else log(`${p.first} didn't get the part. The A-list is a brutal climb.`,'bad');
+            render();
+          }));
+        }
+        opts.push(O('🥂','Network with movie stars','make A-list connections',0,()=>{
+          closeSheet();
+          if(chance(60)){ const sx=makeSex(); const star={name:newFirst(sx)+' '+pick(LAST),kind:'Friend',sex:sx,bond:45+rnd(25),alive:true,id:nid(),note:'movie star'}; p.rels.push(star); p.stats.fame=clamp(p.stats.fame+5); log(`${p.first} hit it off with ${star.name.split(' ')[0]}, a movie star, at an exclusive party.`,'good'); }
+          else { p.money-=Math.min(p.money,5000); log(`${p.first} schmoozed at a celebrity event but didn't click with anyone.`,'muted'); }
+          render();
+        }));
+      }
+      opts.push(OH('— Other —'));
       opts.push(O('💬','Meet someone online','social media dating',0,()=>{
         closeSheet();
         if(p.married){ log(`${p.first} is already spoken for.`,'muted'); render(); return; }
@@ -3570,14 +3719,20 @@ function openHealth(){
     closeSheet(); log(`${p.first} started therapy. The weight lifted a little.`,'good'); render();
   }));
 
-  // rehab if addicted
-  if(p.addiction){
-    opts.push(O('🌿','Enter rehab',`beat ${p.addiction} · $8,000`,0,()=>{
-      p.money-=Math.min(p.money,8000); closeSheet();
-      if(chance(70)){p.addiction=null;p.stats.health=clamp(p.stats.health+10);p.stats.happy=clamp(p.stats.happy+12);log(`${p.first} came out of rehab clean. A new start.`,'big');}
-      else log(`Rehab didn't take this time. ${p.first} is still struggling.`,'bad');
-      render();
-    }));
+  // rehab — one option per active addiction
+  if(p.addictions && p.addictions.length){
+    opts.push(OH('— Recovery —'));
+    p.addictions.forEach(a=>{ const d=ADDICT(a.k); if(!d) return;
+      const cost = {alcohol:8000,cocaine:15000,party_drugs:12000,painkillers:18000,gambling:10000,nicotine:5000}[a.k]||8000;
+      opts.push(O(d.e,`Rehab for ${d.l}`,`${d.rehab}${a.sev>1?' · severe':''}`,0,()=>{
+        if(p.money<cost){closeSheet();log(`${p.first} can't afford this program right now.`,'muted');render();return;}
+        p.money-=cost; closeSheet();
+        const odds = 75 - (a.sev-1)*18;
+        if(chance(odds)){ clearAddiction(p,a.k); p.stats.health=clamp(p.stats.health+10); p.stats.happy=clamp(p.stats.happy+12); log(`${p.first} came out of rehab clean of ${d.l}. A new start.`,'big'); }
+        else { if(a.sev>1)a.sev--; log(`Rehab didn't fully take, but ${p.first} is fighting it.`,'bad'); }
+        render();
+      }));
+    });
   }
 
   // plastic surgery
@@ -3654,6 +3809,7 @@ function openSelf(){
     ${p.married?'Married':'Single'} · ${p.childrenIds.length} child${p.childrenIds.length===1?'':'ren'} · Generation ${p.gen}
     ${(p.partnerHistory&&p.partnerHistory.filter(h=>h.status==='Ex-spouse').length)?`<br>${p.partnerHistory.filter(h=>h.status==='Ex-spouse').length} ex-spouse(s) · ${p.partnerHistory.filter(h=>h.status==='Fling').length} past fling(s)`:''}
     ${p.onSocial?`<br>${p.socialFollowers.toLocaleString()} social followers`:''}
+    ${p.addictions&&p.addictions.length?`<br><span style="color:var(--blood)">Struggling with: ${p.addictions.map(a=>{const d=ADDICT(a.k);return d?d.e+' '+d.l+(a.sev>1?' ('+(a.sev>2?'severe':'worsening')+')':''):a.k;}).join(', ')}</span>`:''}
     ${p.record.length?`<br>Record: ${p.record.join(', ')}`:''}
     ${p.ruler?`<br><span style="color:var(--gold)">${p.ruler.title} of ${p.ruler.country} 👑</span>`:''}
     ${p.fightRecord?`<br><span style="color:var(--sage)">Fight record: ${p.fightRecord.w}-${p.fightRecord.l}${p.champion?' · 🏆 CHAMPION':''}</span>`:''}
