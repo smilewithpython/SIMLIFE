@@ -283,11 +283,14 @@ const CAREERS=[
   {k:'lawyer',   l:'Lawyer',           emoji:'⚖️', edu:3, base:95000, grow:4200, stat:'smarts', ladder:['Associate','Lawyer','Senior Partner','Judge']},
   {k:'doctor',   l:'Surgeon',          emoji:'🫀', edu:3, base:130000,grow:5500, stat:'smarts', ladder:['Resident','Doctor','Surgeon','Chief of Surgery']},
   {k:'nba',      l:'NBA Player',       emoji:'🏀', edu:0, base:900000,grow:120000,stat:'athletic', wild:true, short:true},
+  {k:'nfl',      l:'NFL Player',       emoji:'🏈', edu:0, base:800000,grow:110000,stat:'athletic', wild:true, short:true},
   {k:'soccer',   l:'Pro Footballer',   emoji:'⚽', edu:0, base:600000,grow:90000, stat:'athletic', wild:true, short:true},
   {k:'musician', l:'Musician',         emoji:'🎸', edu:0, base:18000, grow:14000,stat:'fame', wild:true},
   {k:'founder',  l:'Founder',          emoji:'🚀', edu:1, base:0,     grow:0,    stat:'smarts', wild:true},
   {k:'pilot',    l:'Airline Pilot',    emoji:'✈️', edu:2, base:88000, grow:3600, stat:'health'},
   {k:'farmer',   l:'Farmer',           emoji:'🌾', edu:0, base:30000, grow:900,  stat:'health'},
+  {k:'driver',   l:'Delivery Driver',  emoji:'📦', edu:0, base:38000, grow:1200, stat:'health'},
+  {k:'professor',l:'Professor',        emoji:'🎓', edu:3, base:72000, grow:3000, stat:'smarts', uni:true, ladder:['Adjunct','Assistant Prof','Associate Prof','Tenured Prof','Department Dean']},
   {k:'actor',    l:'Actor',            emoji:'🎭', edu:0, base:26000, grow:16000,stat:'fame', wild:true},
   {k:'model',    l:'Model',            emoji:'📸', edu:0, base:30000, grow:12000,stat:'fame', wild:true, looksGate:70},
   {k:'writer',   l:'Author',           emoji:'✍️', edu:0, base:20000, grow:7000, stat:'smarts', wild:true},
@@ -410,6 +413,15 @@ const CAREERS=[
       {t:'Dimension Bender', mult:14,  years:3, req:82, fame:30},
       {t:'Reality Architect',mult:30,  years:4, req:90, fame:55},
     ]},
+  {k:'aistartup', l:'AI Startup', emoji:'🤖', edu:1, base:0, keyStat:'smarts', staged:true, company:true,
+    stages:[
+      {t:'Solo Founder',       mult:0,    years:0, req:0,  fame:1},
+      {t:'Seed Stage',         mult:0.6,  years:1, req:55, fame:4},
+      {t:'Series A',           mult:2,    years:2, req:64, fame:10},
+      {t:'Scaling Startup',    mult:6,    years:2, req:72, fame:20},
+      {t:'Unicorn',            mult:18,   years:3, req:82, fame:38},
+      {t:'IPO — Public CEO',   mult:45,   years:3, req:90, fame:60},
+    ]},
 ];
 const CAREER=k=>CAREERS.find(c=>c.k===k);
 
@@ -437,6 +449,22 @@ const CLUBS=[
   {k:'band',     l:'School Band',     emoji:'🎺', stat:'fame',     boost:2, helps:'popstar',   flag:'club_band',    blurb:'stage confidence'},
   {k:'culinary', l:'Culinary Club',   emoji:'🍳', stat:'smarts',   boost:2, helps:'restaurateur',flag:'club_culinary',blurb:'kitchen instincts'},
   {k:'gaming',   l:'Esports Club',    emoji:'🕹', stat:'smarts',   boost:3, helps:'esports',   flag:'club_gaming',  blurb:'fast reflexes'},
+];
+
+// Greek life — 3 fraternities + 3 sororities, each with a vibe and perk
+const GREEK=[
+  {k:'fra_omega', l:'Omega Chi', emoji:'🏛', kind:'fraternity', vibe:'old-money power network', perk:'connections', stat:'charming'},
+  {k:'fra_sig',   l:'Sigma Tau', emoji:'🍺', kind:'fraternity', vibe:'wild party house',        perk:'social',      stat:'happy'},
+  {k:'fra_kap',   l:'Kappa Rho', emoji:'📚', kind:'fraternity', vibe:'scholar brotherhood',     perk:'smarts',      stat:'smarts'},
+  {k:'sor_delta', l:'Delta Nu',  emoji:'👑', kind:'sorority',   vibe:'elite social circle',     perk:'connections', stat:'charming'},
+  {k:'sor_pi',    l:'Pi Beta',   emoji:'🌸', kind:'sorority',   vibe:'spirited and social',     perk:'social',      stat:'happy'},
+  {k:'sor_theta', l:'Theta Kai', emoji:'🔬', kind:'sorority',   vibe:'driven academic sisters', perk:'smarts',      stat:'smarts'},
+];
+// College sports — gateway to the pros or the Olympics
+const COLLEGE_SPORTS=[
+  {k:'cbb', l:'College Basketball', emoji:'🏀', stat:'athletic', pro:'nba',    proReq:84, olympics:false},
+  {k:'cfb', l:'College Football',   emoji:'🏈', stat:'athletic', pro:'nfl',    proReq:84, olympics:false},
+  {k:'ctf', l:'College Track',      emoji:'🏃', stat:'athletic', pro:null,     proReq:99, olympics:true},
 ];
 
 /* education tiers */
@@ -548,6 +576,10 @@ function migrate(){
     if(p.escapeAttempts==null) p.escapeAttempts=0;
     if(!p.powers) p.powers=[];
     if(p.q==null) p.q=0;
+    if(p.greek==null) p.greek=null;
+    if(p.collegeSport==null) p.collegeSport=null;
+    if(p.fightRecord==null) p.fightRecord=null;
+    if(p.champion==null) p.champion=false;
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
@@ -605,6 +637,10 @@ function creator(){
           <input class="txt" id="ef" value="${pend.fn}" placeholder="First name" style="margin-top:0">
           <input class="txt" id="el" value="${pend.ln}" placeholder="Last name" style="margin-top:0">
         </div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input class="txt" id="ecity" value="${city}" placeholder="City" style="margin-top:0">
+          <input class="txt" id="ecountry" value="${country}" placeholder="Country" style="margin-top:0">
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <span class="page-flag" style="background:var(--panel-2);padding:6px 11px;border-radius:20px">${pend.t1.e} ${pend.t1.l}</span>
           <span class="page-flag" style="background:var(--panel-2);padding:6px 11px;border-radius:20px">${pend.t2.e} ${pend.t2.l}</span>
@@ -614,7 +650,7 @@ function creator(){
         <p class="muted" style="color:var(--ink-faint);font-style:italic;margin-bottom:12px">Family standing: ${money(pend.origin.m)}</p>
         <div style="display:flex;gap:8px">
           <button class="btn ghost" id="reroll" style="margin-top:0">↻ Reroll</button>
-          <button class="btn ghost" id="place" style="margin-top:0">📍 Move</button>
+          <button class="btn ghost" id="place" style="margin-top:0">🎲 Random city</button>
           <button class="btn ghost" id="sx" style="margin-top:0">${sexLab}</button>
         </div>
         <button class="btn gold" id="go" style="margin-top:10px">Live this life →</button>
@@ -622,10 +658,14 @@ function creator(){
     </div>`;
     $('#ef').oninput=e=>pend.fn=e.target.value;
     $('#el').oninput=e=>pend.ln=e.target.value;
+    $('#ecity').oninput=e=>{ pend.place=[e.target.value, pend.place[1]]; };
+    $('#ecountry').oninput=e=>{ pend.place=[pend.place[0], e.target.value]; };
     $('#reroll').onclick=draw;
     $('#place').onclick=()=>{ pend.place=pick(BIRTHPLACES); paint(); };
     $('#sx').onclick=()=>{ sex = sex==='m'?'f':sex==='f'?'n':'m'; pend.fn=newFirst(sex); paint(); };
-    $('#go').onclick=()=>{ pend.fn=(pend.fn||'').trim()||newFirst(sex); pend.ln=(pend.ln||'').trim()||pick(LAST); startLife(pend,sex); };
+    $('#go').onclick=()=>{ pend.fn=(pend.fn||'').trim()||newFirst(sex); pend.ln=(pend.ln||'').trim()||pick(LAST);
+      pend.place=[ (pend.place[0]||'').trim()||'Seattle', (pend.place[1]||'').trim()||'United States' ];
+      startLife(pend,sex); };
   };
   draw();
 }
@@ -787,7 +827,13 @@ function logSeasonHeader(text){
 function quarterTick(p, done){
   // gentle drift so quarters feel alive without double-counting the yearly sim
   p.stats.happy=clamp(p.stats.happy+rndDrift(1));
-  // quarterly job flavor for fight-style careers will hook in here later
+  // FIGHT CAREERS: quarterly prep-and-fight cadence (UFC = being "over", WWE = scripted)
+  if((p.job==='ufc'||p.job==='wwe') && p.age<42 && !p.inPrison){
+    // a fight roughly every other quarter (≈2 fights/year) — other quarters are training camp
+    if((p.q===1 || p.q===3)){
+      render(); showFightPrep(p, ()=>{ if(done)done(); }); return;
+    }
+  }
   // chance of an interactive choice this quarter
   if(p.alive && !p.inPrison && chance(38)){
     const ev=rollInteractiveEvent(p);
@@ -796,6 +842,64 @@ function quarterTick(p, done){
   // otherwise a small one-tap quarter event
   if(p.alive && chance(45)){ quarterEvent(p); }
   if(done) done();
+}
+// fight career: prep this quarter, then fight
+function showFightPrep(p, done){
+  if(p.fightRecord==null){ p.fightRecord={w:0,l:0}; p.champion=false; }
+  const isUFC=p.job==='ufc';
+  const opts=[
+    {l:'Train hard', sub:'+skill, −rest', kind:'train'},
+    {l:'Study your opponent', sub:'+edge', kind:'study'},
+    {l:'Cut weight & rest', sub:'safe prep', kind:'rest'},
+    {l:isUFC?'Trash-talk to sell the fight':'Cut a promo', sub:'+hype/fame', kind:'promo'},
+  ];
+  const rec=p.fightRecord;
+  let html=`<div class="grab"></div>
+    <div style="text-align:center;font-size:40px;margin:4px 0">${isUFC?'🥊':'🤼'}</div>
+    <h3 style="text-align:center">${p.champion?'Title Defense':'Fight Week'} — ${SEASONS[p.q||0]}</h3>
+    <p style="padding:4px 22px 14px;color:var(--ink-dim);font-size:14.5px;line-height:1.55;text-align:center">Record ${rec.w}-${rec.l}${p.champion?' · CHAMPION':''}. ${p.first} has a fight coming up. How do they prepare?</p>`;
+  opts.forEach((c,i)=>{ html+=`<button class="opt" data-i="${i}"><span class="oico">▸</span><span class="otxt">${c.l}<span class="osub">${c.sub}</span></span></button>`; });
+  const s=document.createElement('div'); s.className='scrim'; s.innerHTML=`<div class="sheet">${html}</div>`; root.appendChild(s);
+  s.querySelectorAll('.opt').forEach(b=>{ b.onclick=()=>{ const c=opts[+b.dataset.i]; s.remove(); resolveFight(p,c.kind,isUFC); render(); if(done)done(); }; });
+}
+function resolveFight(p, prep, isUFC){
+  let edge=0;
+  if(prep==='train'){ p.stats.athletic=clamp(p.stats.athletic+2); p.stats.health=clamp(p.stats.health-4); edge=12; }
+  else if(prep==='study'){ edge=16; }
+  else if(prep==='rest'){ p.stats.health=clamp(p.stats.health+3); edge=6; }
+  else if(prep==='promo'){ p.stats.fame=clamp(p.stats.fame+6); edge=4; }
+  if(!p.fightRecord) p.fightRecord={w:0,l:0};
+  const rec=p.fightRecord;
+  if(isUFC){
+    // UFC: real competition — winning depends on skill + prep; injuries possible
+    const winOdds = 42 + (p.stats.athletic-60)*0.6 + edge + (p.traits.includes('tough')?8:0);
+    if(chance(winOdds)){
+      rec.w++; const purse=30000+rnd(400000)+(p.champion?500000:0); p.money+=purse; p.stats.fame=clamp(p.stats.fame+(p.champion?8:5));
+      log(`🥊 ${p.first} WON by ${pick(['decision','KO','submission','TKO'])}! Record ${rec.w}-${rec.l}. Purse ${money(purse)}.`,'big');
+      if(chance(28)) p.stats.health=clamp(p.stats.health-(6+rnd(10)));
+      // title shot after a win streak
+      if(!p.champion && rec.w>=4 && rec.w-rec.l>=3 && chance(70)){ p.champion=true; p.stats.fame=clamp(p.stats.fame+25); worldEvent(p,`${p.first} won the UFC championship belt.`,{hope:true}); }
+    } else {
+      rec.l++; p.stats.health=clamp(p.stats.health-(6+rnd(10)));
+      log(`🥊 ${p.first} LOST the fight. Record ${rec.w}-${rec.l}.`,'bad');
+      if(p.champion && chance(60)){ p.champion=false; log(`${p.first} lost the title.`,'bad'); }
+    }
+    // in UFC, being "over" (famous/exciting) matters as much as the belt
+    if(p.stats.fame>60 && chance(20)){ const bonus=100000+rnd(900000); p.money+=bonus; log(`${p.first}'s star power landed a ${money(bonus)} headline bonus — a true draw.`,'big'); }
+  } else {
+    // WWE: scripted — wins are booked toward stars who are "over"; fame drives everything
+    const overness = p.stats.fame + edge + p.stats.athletic*0.3;
+    if(chance(40+edge)){
+      rec.w++; const pay=20000+rnd(150000)+(p.champion?200000:0); p.money+=pay; p.stats.fame=clamp(p.stats.fame+6);
+      log(`🤼 ${p.first} was booked to go over in a huge match! The crowd is electric. Record ${rec.w}-${rec.l}.`,'big');
+      if(!p.champion && p.stats.fame>45 && chance(55)){ p.champion=true; p.stats.fame=clamp(p.stats.fame+20); worldEvent(p,`${p.first} was crowned WWE Champion in a packed arena.`,{hope:true}); }
+    } else {
+      rec.l++; p.stats.fame=clamp(p.stats.fame+2);
+      log(`🤼 ${p.first} put another wrestler over tonight. Record ${rec.w}-${rec.l}.`,'muted');
+      if(p.champion && chance(40)){ p.champion=false; log(`${p.first} dropped the title in a scripted finish.`,'muted'); }
+    }
+    if(chance(14)){ p.stats.health=clamp(p.stats.health-(5+rnd(10))); log(`${p.first} took a real bump and got banged up.`,'bad'); }
+  }
 }
 function ageUp(){ // kept as alias in case anything calls it
   runYear();
@@ -1118,6 +1222,12 @@ function runJob(p){
         log(`${p.first} ${callup} — now ${next.t}. Pay is ${money(Math.round(c.base*next.mult))}.`,'big');
         // heroes & villains unlock a new power as they rise
         if((c.hero||c.evil) && chance(70)){ const pow=grantPower(p); if(pow) log(`${p.first} unlocked a new power: ${pow}.`,'big'); }
+        // AI STARTUP: funding rounds and the IPO windfall
+        if(c.company){
+          if(next.t==='Series A'){ const raise=2000000+rnd(8000000); log(`${p.first} closed a Series A — ${money(raise)} raised. (Equity, not cash yet.)`,'big'); }
+          else if(next.t==='Unicorn'){ p.stats.fame=clamp(p.stats.fame+15); log(`${p.first}'s company hit a billion-dollar valuation. A unicorn.`,'big'); }
+          else if(next.t==='IPO — Public CEO'){ const windfall=20000000+rnd(180000000); p.money+=windfall; p.stats.fame=clamp(p.stats.fame+30); worldEvent(p,`${p.first} took their AI company public in a blockbuster IPO.`,{hope:true}); log(`💰 The IPO made ${p.first} fabulously rich — ${money(windfall)} cashed out.`,'big'); }
+        }
       } else if(p._stageYears>10 && p._stage<2 && chance(18)){
         // stuck at the bottom too long → wash out
         log(`${p.first} couldn't break through and left the ${c.l.toLowerCase()} world behind.`,'muted');
@@ -1162,11 +1272,9 @@ function runJob(p){
       pay=Math.round(c.base+p.jobYears*c.grow*(0.4+Math.random()*buzz));
       p.stats.fame=clamp(p.stats.fame+(chance(30)?6:1));
     } else if(c.k==='ufc'){
+      // fights now happen quarterly (prep-and-fight); yearly tick just settles base income
       pay = c.base + p.jobYears*c.grow;
-      const won = chance(40 + p.stats.athletic*0.4);
-      if(won){ pay+=80000+rnd(400000); p.stats.fame=clamp(p.stats.fame+8); log(`${p.first} won the fight. The crowd went wild.`,'big'); }
-      else { p.stats.health=clamp(p.stats.health-12); log(`${p.first} took a brutal loss in the cage.`,'bad'); }
-      if(p.age>38 && chance(45)){ log(`${p.first} hung up the gloves for good.`,'big'); endJob(p,'Retired from fighting'); return; }
+      if(p.age>38 && chance(35)){ log(`${p.first} hung up the gloves for good.`,'big'); endJob(p,'Retired from fighting'); return; }
     } else if(c.k==='politician'){
       pay = c.base + (p._rung??0)*c.grow;
       const steps=c.ladder, idx=p._rung??0;
@@ -1219,7 +1327,26 @@ function schoolTick(p){
   if(p._college){
     p._college--;
     if(p._college===0){ p.inSchool=false; p.schoolLevel=null; p.edu=Math.max(p.edu,p._collegeTier);
-      log(`${p.first} graduated — ${EDU[p.edu]}. The doors are open now.`,'big'); p._collegeTier=null; }
+      log(`${p.first} graduated — ${EDU[p.edu]}. The doors are open now.`,'big'); p._collegeTier=null;
+      // college athletes get a shot at the pros or the Olympics
+      if(p.collegeSport){
+        const s=COLLEGE_SPORTS.find(x=>x.k===p.collegeSport);
+        if(s){
+          if(s.olympics){
+            // track → Olympic qualification, then pro/fame
+            if(p.stats.athletic>=88 && chance(55)){ p.stats.fame=clamp(p.stats.fame+30); worldEvent(p,`${p.first} qualified for the Olympics and medaled in track.`,{hope:true}); p.money+=150000+rnd(500000); }
+            else if(p.stats.athletic>=80){ p.stats.fame=clamp(p.stats.fame+12); log(`${p.first} competed at the national level in track. So close to the Olympics.`,'good'); }
+            else { log(`${p.first}'s college sports days came to an end.`,'muted'); }
+          } else if(s.pro){
+            // basketball/football → draft chance
+            const pc=CAREER(s.pro);
+            if(p.stats.athletic>=s.proReq && chance(45)){ takeJobSilent(p,s.pro); log(`${p.first} was DRAFTED into the ${pc.l.replace(' Player','')}! A pro athlete now.`,'big'); p.stats.fame=clamp(p.stats.fame+20); }
+            else { log(`${p.first} went undrafted. The dream of going pro fades.`,'muted'); }
+          }
+        }
+        p.collegeSport=null;
+      }
+    }
   }
 }
 
@@ -1772,6 +1899,20 @@ function lifeEvents(p){
   if(p.job!=='none' && chance(22)){
     const j=p.job;
     const careerEvents={
+      professor:[()=>{p.stats.fame=clamp(p.stats.fame+4);log(`${p.first}'s lecture went viral among students. A campus favorite.`,'good');},
+                 ()=>{const grant=20000+rnd(150000);p.money+=grant;log(`${p.first} secured a research grant — ${money(grant)}.`,'good');},
+                 ()=>{
+                   // a student expresses interest — strictly an adult university setting
+                   if(p.age>=24){ p.stats.happy=clamp(p.stats.happy+2);
+                     log(`A graduate student made it clear they were interested in ${p.first}. ${pick(['Flattering, but kept professional.','Office hours got a little awkward.','They politely kept it professional.'])}`,'muted'); }
+                   else { p.stats.fame=clamp(p.stats.fame+2); log(`${p.first} earned strong teaching reviews this term.`,'good'); }
+                 }],
+      driver:[()=>{const tips=500+rnd(3000);p.money+=tips;log(`${p.first} crushed peak delivery season — ${money(tips)} in bonuses.`,'good');},
+              ()=>{p.stats.health=clamp(p.stats.health-6);log(`${p.first} threw out their back hauling packages.`,'bad');},
+              ()=>{p.stress=clamp(p.stress+8);log(`Endless routes and tight windows wore ${p.first} down.`,'muted');}],
+      aistartup:[()=>{p.stats.fame=clamp(p.stats.fame+6);log(`${p.first}'s product got featured in the tech press.`,'good');},
+                 ()=>{p.stress=clamp(p.stress+18);log(`A key engineer quit and ${p.first} scrambled to keep the company alive.`,'bad');},
+                 ()=>{const r=10000+rnd(200000);p.money+=r;log(`A big enterprise contract landed — ${money(r)}.`,'good');}],
       cop:[()=>{p.stats.fame=clamp(p.stats.fame+5);log(`${p.first} made a high-profile arrest. The local news ran the story.`,'good');},
            ()=>{p.stats.health=clamp(p.stats.health-12);log(`${p.first} was injured chasing a suspect.`,'bad');}],
       doctor:[()=>{p.stats.fame=clamp(p.stats.fame+4);p.stats.happy=clamp(p.stats.happy+6);log(`${p.first} saved a patient everyone else had given up on.`,'good');},
@@ -2212,6 +2353,36 @@ function openActivities(){
     });
   }
 
+  // COLLEGE LIFE — Greek life + sports, only while at university
+  if(p._college && p._collegeTier>=2){
+    opts.push(OH('— Greek life —'));
+    if(!p.greek){
+      GREEK.forEach(g=>{
+        // sororities for women, fraternities for men; non-binary can pick either
+        if((g.kind==='fraternity'&&p.sex==='f')||(g.kind==='sorority'&&p.sex==='m')) return;
+        opts.push(O(g.emoji, g.l, `${g.kind} · ${g.vibe}`,0,()=>{
+          p.greek=g.k; p.stats[g.stat]=clamp(p.stats[g.stat]+6); setFlag(p,'greek_'+g.perk);
+          closeSheet(); log(`${p.first} pledged ${g.l} — ${g.vibe}.`,'big'); render();
+        }));
+      });
+    } else {
+      const g=GREEK.find(x=>x.k===p.greek);
+      opts.push(O(g.emoji, g.l, '✓ member · '+g.vibe, 0, null, true));
+    }
+    opts.push(OH('— College sports —'));
+    if(!p.collegeSport){
+      COLLEGE_SPORTS.forEach(s=>{
+        opts.push(O(s.emoji, s.l, p.stats.athletic>=55?`walk on · path to ${s.olympics?'the Olympics':CAREER(s.pro).l}`:'need more athletic ability',0,()=>{
+          p.collegeSport=s.k; p.stats.athletic=clamp(p.stats.athletic+4);
+          closeSheet(); log(`${p.first} made the ${s.l.toLowerCase()} team.`,'good'); render();
+        }, p.stats.athletic<55));
+      });
+    } else {
+      const s=COLLEGE_SPORTS.find(x=>x.k===p.collegeSport);
+      opts.push(O(s.emoji, s.l, '✓ on the team · train in the gym to improve', 0, null, true));
+    }
+  }
+
   // PART-TIME (teens 13-17, or students)
   if((p.age>=13 && p.age<18) || p._college){
     if(!p.partTime){
@@ -2630,6 +2801,8 @@ function openSelf(){
     ${p.onSocial?`<br>${p.socialFollowers.toLocaleString()} social followers`:''}
     ${p.record.length?`<br>Record: ${p.record.join(', ')}`:''}
     ${p.ruler?`<br><span style="color:var(--gold)">${p.ruler.title} of ${p.ruler.country} 👑</span>`:''}
+    ${p.fightRecord?`<br><span style="color:var(--sage)">Fight record: ${p.fightRecord.w}-${p.fightRecord.l}${p.champion?' · 🏆 CHAMPION':''}</span>`:''}
+    ${p.greek?`<br>${GREEK.find(g=>g.k===p.greek)?GREEK.find(g=>g.k===p.greek).l:''} member`:''}
     ${p.powers&&p.powers.length?`<br><span style="color:var(--sky)">Powers: ${p.powers.join(', ')}</span>`:''}
     ${p.inPrison&&p.securityLevel?`<br><span style="color:var(--blood)">Held in ${SECURITY_NAMES[p.securityLevel]}</span>`:''}
     ${p.citizenship&&p.citizenship!==(G.hometown||'').split(', ')[1]?`<br>Citizen of ${p.citizenship}`:''}
