@@ -278,8 +278,68 @@ const CAREERS=[
   {k:'ufc',      l:'UFC Fighter',      emoji:'🥊', edu:0, base:120000,grow:60000, stat:'athletic', wild:true, short:true, athGate:78, danger:true},
   {k:'agent',    l:'Secret Agent',     emoji:'🕵️', edu:2, base:90000, grow:4000, stat:'smarts', danger:true, ladder:['Recruit','Field Agent','Senior Agent','Station Chief','Director']},
   {k:'politician',l:'Politician',      emoji:'🏛', edu:2, base:70000, grow:5000, stat:'charming', wild:true, ladder:['Candidate','Councilor','Mayor','Governor','President']},
+  // ----- deep staged careers (progress through named stages with skill gates) -----
+  {k:'wwe', l:'Pro Wrestler', emoji:'🤼', edu:0, base:24000, keyStat:'athletic', athGate:55, staged:true,
+    stages:[
+      {t:'Indie Circuit',   mult:1,   years:0, req:0,  fame:1},
+      {t:'NXT Developmental',mult:2.5, years:2, req:62, fame:4},
+      {t:'SmackDown Roster',mult:7,   years:3, req:72, fame:9},
+      {t:'Raw Main Eventer',mult:16,  years:3, req:80, fame:16},
+      {t:'World Champion',  mult:34,  years:3, req:88, fame:30},
+      {t:'Hall of Famer',   mult:20,  years:5, req:90, fame:12},
+    ]},
+  {k:'moviestar', l:'Actor → Movie Star', emoji:'🎬', edu:0, base:18000, keyStat:'looks', staged:true,
+    stages:[
+      {t:'Background Extra', mult:1,   years:0, req:0,  fame:1},
+      {t:'Commercial Actor', mult:2,   years:2, req:48, fame:3},
+      {t:'TV Series Regular',mult:5,   years:3, req:58, fame:8},
+      {t:'Supporting Film',  mult:12,  years:3, req:66, fame:15},
+      {t:'Leading Role',     mult:28,  years:3, req:74, fame:26},
+      {t:'A-List Movie Star',mult:60,  years:4, req:82, fame:45},
+      {t:'Oscar Winner',     mult:75,  years:4, req:88, fame:60},
+    ]},
+  {k:'tech', l:'Tech / IT', emoji:'💻', edu:1, base:52000, keyStat:'smarts', staged:true,
+    stages:[
+      {t:'Help Desk',        mult:1,    years:0, req:0,  fame:0},
+      {t:'IT Support',       mult:1.4,  years:2, req:50, fame:0},
+      {t:'Junior Developer', mult:2.1,  years:2, req:58, fame:0},
+      {t:'Software Engineer',mult:3.4,  years:3, req:66, fame:0},
+      {t:'Senior Engineer',  mult:5.2,  years:3, req:74, fame:1},
+      {t:'Engineering Lead', mult:7.5,  years:3, req:80, fame:2},
+      {t:'CTO',              mult:13,   years:4, req:86, fame:5},
+    ]},
+  {k:'boxer', l:'Boxer', emoji:'🥊', edu:0, base:16000, keyStat:'athletic', athGate:60, staged:true, danger:true, short:true,
+    stages:[
+      {t:'Amateur',          mult:1,   years:0, req:0,  fame:1},
+      {t:'Pro Debut',        mult:3,   years:2, req:66, fame:4},
+      {t:'Ranked Contender', mult:9,   years:3, req:76, fame:10},
+      {t:'Title Challenger', mult:22,  years:2, req:84, fame:22},
+      {t:'World Champion',   mult:48,  years:3, req:90, fame:40},
+    ]},
+  {k:'director', l:'Film Director', emoji:'🎥', edu:1, base:30000, keyStat:'smarts', staged:true,
+    stages:[
+      {t:'Film School Grad', mult:1,   years:0, req:0,  fame:0},
+      {t:'Music Video Dir.', mult:2,   years:2, req:52, fame:3},
+      {t:'Indie Director',   mult:4.5, years:3, req:62, fame:8},
+      {t:'Studio Director',  mult:11,  years:3, req:72, fame:18},
+      {t:'Blockbuster Dir.', mult:26,  years:4, req:82, fame:38},
+      {t:'Legendary Auteur', mult:40,  years:5, req:88, fame:55},
+    ]},
 ];
 const CAREER=k=>CAREERS.find(c=>c.k===k);
+
+// High-school clubs: joining gives yearly stat growth + a head-start flag for matching careers
+const CLUBS=[
+  {k:'choir',    l:'Choir',          emoji:'🎶', stat:'fame',     boost:2, helps:'musician', flag:'club_choir',   blurb:'singing chops'},
+  {k:'drama',    l:'Drama Club',     emoji:'🎭', stat:'looks',    boost:2, helps:'moviestar', flag:'club_drama',   blurb:'stage presence'},
+  {k:'film',     l:'Film Club',      emoji:'🎬', stat:'smarts',   boost:2, helps:'director',  flag:'club_film',    blurb:'an eye for shots'},
+  {k:'wrestling',l:'Wrestling Team', emoji:'🤼', stat:'athletic', boost:3, helps:'wwe',       flag:'club_wrestling',blurb:'mat skills'},
+  {k:'boxing',   l:'Boxing Club',    emoji:'🥊', stat:'athletic', boost:3, helps:'boxer',     flag:'club_boxing',  blurb:'a real jab'},
+  {k:'coding',   l:'Coding Club',    emoji:'💻', stat:'smarts',   boost:3, helps:'tech',      flag:'club_coding',  blurb:'programming fundamentals'},
+  {k:'debate',   l:'Debate Team',    emoji:'🗣', stat:'smarts',   boost:2, helps:'lawyer',    flag:'club_debate',  blurb:'a sharp tongue'},
+  {k:'track',    l:'Track & Field',  emoji:'🏃', stat:'athletic', boost:3, helps:'nba',       flag:'club_track',   blurb:'speed and stamina'},
+  {k:'science',  l:'Science Olympiad',emoji:'🔬',stat:'smarts',   boost:3, helps:'doctor',    flag:'club_science', blurb:'lab discipline'},
+];
 
 /* education tiers */
 const EDU={0:'No degree',1:'Trade / Academy',2:"Bachelor's",3:'Doctorate'};
@@ -325,6 +385,7 @@ function blankPerson(opt={}){
     seeds:[],      // delayed consequences {dueAge, kind, data}
     flags:{},      // memory of past choices for branching
     seenEvents:[], // event ids already shown (avoid repeats where desired)
+    clubs:[],      // high-school clubs joined
     deathCause:null, deathAge:null,
     log:[],
   };
@@ -367,6 +428,7 @@ function migrate(){
     if(!p.seeds) p.seeds=[];
     if(!p.flags) p.flags={};
     if(!p.seenEvents) p.seenEvents=[];
+    if(!p.clubs) p.clubs=[];
     if(p.stress==null) p.stress=0;
     if(p.socialFollowers==null) p.socialFollowers=0;
     if(p.onSocial==null) p.onSocial=false;
@@ -573,6 +635,10 @@ function ageUp(){
   p.stats.health = clamp(p.stats.health + (p.age>50? -1.2 - (p.age-50)*0.12 : (p.age<25? +0.4:0)) + (p.traits.includes('tough')?0.5:0) + rndDrift());
   p.stats.happy  = clamp(p.stats.happy + rndDrift(2) + (p.traits.includes('kind')?0.3:0));
   if(p.age<=18 && p.inSchool) p.stats.smarts=clamp(p.stats.smarts + (p.traits.includes('curious')?2.2:1.4));
+  // high-school club training
+  if(p.clubs && p.clubs.length && p.age>=13 && p.age<=18){
+    p.clubs.forEach(ck=>{ const cl=CLUBS.find(x=>x.k===ck); if(cl){ p.stats[cl.stat]=clamp(p.stats[cl.stat]+cl.boost); setFlag(p,cl.flag); } });
+  }
   if(p.age>=14&&p.age<=22) p.stats.athletic=clamp(p.stats.athletic+rndDrift(2));
   p.stats.looks = clamp(p.stats.looks + (p.age>35?-0.5:p.age<25?0.3:0) + rndDrift(1));
   if(p.stats.fame>0) p.stats.fame=clamp(p.stats.fame*0.94,0,100); // fame fades
@@ -673,6 +739,48 @@ function runJob(p){
   const c=CAREER(p.job);
   p.jobYears++;
   let pay=p.salary;
+
+  // ---- deep staged careers (WWE, movie star, tech, boxer, director) ----
+  if(c.staged){
+    const stages=c.stages;
+    if(p._stage==null){ p._stage=0; p._stageYears=0; p.jobTitle=stages[0].t; }
+    p._stageYears++;
+    const st=stages[p._stage];
+    const key=c.keyStat||'smarts';
+    // training: working the craft slowly raises the key stat
+    p.stats[key]=clamp(p.stats[key] + (p.traits.includes('driven')?1.6:1.0) + (chance(30)?1:0));
+    // fame trickle by stage
+    if(st.fame) p.stats.fame=clamp(p.stats.fame + st.fame*0.2 + (chance(25)?st.fame*0.1:0));
+    // dangerous staged careers (boxer) take damage
+    if(c.danger && chance(p._stage>=2?22:12)){ p.stats.health=clamp(p.stats.health-(8+rnd(12))); log(`${p.first} took a beating this season. Recovery will take time.`,'bad'); }
+    // pay = base * stage multiplier, with a little variance
+    pay=Math.round(c.base*st.mult*(0.85+Math.random()*0.4));
+    p.salary=pay;
+    // can we advance to the next stage?
+    const next=stages[p._stage+1];
+    if(next){
+      const ready = p._stageYears>=next.years && p.stats[key]>=next.req;
+      if(ready && chance(55+p.stats[key]*0.3)){
+        p._stage++; p._stageYears=0; p.jobTitle=next.t;
+        p.stats.fame=clamp(p.stats.fame + (next.fame||0));
+        const callup = pick(['got the call-up','earned the promotion','broke through','made the leap','signed the bigger deal']);
+        log(`${p.first} ${callup} — now ${next.t}. Pay is ${money(Math.round(c.base*next.mult))}.`,'big');
+      } else if(p._stageYears>10 && p._stage<2 && chance(18)){
+        // stuck at the bottom too long → wash out
+        log(`${p.first} couldn't break through and left the ${c.l.toLowerCase()} world behind.`,'muted');
+        endJob(p); return;
+      }
+    } else {
+      // at the top: aging out for athletic careers
+      if((c.short) && p.age>40 && chance(35)){ log(`${p.first} retired at the top of the game — a true legend.`,'big'); p.stats.fame=clamp(p.stats.fame+12); endJob(p,'Retired a champion'); return; }
+    }
+    // living costs
+    const costs0 = 11000 + (p.married?7000:0) + p.childrenIds.length*9000 + p.age*120;
+    p.money += pay - costs0;
+    if(p.money<0 && chance(30)) log(`Money is tight. ${p.first} is in the red.`,'bad');
+    return;
+  }
+
   // wildcard careers fluctuate
   if(c.wild){
     if(c.k==='youtuber'||c.k==='musician'||c.k==='actor'){
@@ -744,7 +852,7 @@ function runJob(p){
   p.money += net;
   if(p.money<0 && chance(30)) log(`Money is tight. ${p.first} is in the red.`,'bad');
 }
-function endJob(p,reason){ p.job='none'; p.salary=0; p.jobYears=0; p.jobTitle=null; p._rung=0; if(reason)log(reason,'muted'); }
+function endJob(p,reason){ p.job='none'; p.salary=0; p.jobYears=0; p.jobTitle=null; p._rung=0; p._stage=null; p._stageYears=0; if(reason)log(reason,'muted'); }
 
 /* ---------------- schooling ---------------- */
 function schoolTick(p){
@@ -1355,6 +1463,19 @@ function openActivities(){
   }
   if(p._college){ opts.push(O('📖','In school',`${p._college} year(s) of ${EDU[p._collegeTier]} left`,0,null,true)); }
 
+  // HIGH-SCHOOL CLUBS (ages 13-18, in school)
+  if(p.age>=13 && p.age<=18 && p.inSchool){
+    opts.push(OH('— School clubs —'));
+    CLUBS.forEach(cl=>{
+      const joined=p.clubs.includes(cl.k);
+      const helpsCareer=CAREER(cl.helps);
+      opts.push(O(cl.emoji, cl.l, joined?'✓ member · building '+cl.blurb:`+${cl.stat} yearly · helps future ${helpsCareer?helpsCareer.l:cl.helps}`,0,()=>{
+        if(joined){ p.clubs=p.clubs.filter(x=>x!==cl.k); closeSheet(); log(`${p.first} quit ${cl.l}.`,'muted'); render(); }
+        else { p.clubs.push(cl.k); p.stats[cl.stat]=clamp(p.stats[cl.stat]+cl.boost); setFlag(p,cl.flag); closeSheet(); log(`${p.first} joined ${cl.l}.`,'good'); render(); }
+      }));
+    });
+  }
+
   // PART-TIME (teens 13-17, or students)
   if((p.age>=13 && p.age<18) || p._college){
     if(!p.partTime){
@@ -1377,15 +1498,28 @@ function openActivities(){
         const looksGate = c.looksGate && p.stats.looks < c.looksGate;
         const dis = eduGate || athGate || looksGate;
         let sub;
-        if(athGate) sub='needs elite athleticism';
+        if(athGate) sub='needs athleticism '+(c.athGate||80)+'+';
         else if(looksGate) sub=`needs looks ${c.looksGate}+`;
         else if(eduGate) sub=`needs ${EDU[c.edu]}`;
+        else if(c.staged) sub=`climb from ${c.stages[0].t} to the top`;
         else sub = c.wild?'a long shot — high ceiling':`~${money(c.base)} to start`;
         opts.push(O(c.emoji,c.l,sub,0,()=>takeJob(p,c.k),dis));
       });
     } else {
       const c=CAREER(p.job);
-      opts.push(OH(`— ${c.l} —`));
+      const header = c.staged && p._stage!=null ? `— ${c.l}: ${c.stages[p._stage].t} —` : `— ${c.l} —`;
+      opts.push(OH(header));
+      if(c.staged && p._stage!=null){
+        const next=c.stages[p._stage+1];
+        if(next){ const key=c.keyStat||'smarts'; const have=Math.round(p.stats[key]);
+          opts.push(OH(`next: ${next.t} · needs ${key} ${next.req}+ (you: ${have})`));
+        } else { opts.push(OH(`at the very top of the game`)); }
+        const key=c.keyStat||'smarts';
+        opts.push(O('🔥','Train hard',`+${key}, costs health & joy`,0,()=>{
+          p.stats[key]=clamp(p.stats[key]+4+rnd(3)); p.stats.health=clamp(p.stats.health-3); p.stats.happy=clamp(p.stats.happy-3); p.stress=clamp(p.stress+6);
+          closeSheet(); log(`${p.first} trained relentlessly. ${capFirst(key)} is sharper.`,'good'); render();
+        }));
+      }
       opts.push(O('💼','Work harder this year','+pay odds, −health',0,()=>{p.stats.happy=clamp(p.stats.happy-4);p.stats.health=clamp(p.stats.health-3);if(chance(45)){const b=Math.round(p.salary*0.12);p.money+=b;closeSheet();log(`${p.first} grinded and pocketed a ${money(b)} bonus.`,'good');render();}else{closeSheet();log(`${p.first} worked hard. Nobody noticed.`,'muted');render();}}));
       opts.push(O('🚪','Quit this job','walk away',0,()=>{closeSheet();endJob(p,`${p.first} quit. Free, for now.`);render();}));
     }
@@ -1476,7 +1610,20 @@ function openActivities(){
 }
 
 function enrollCollege(p,tier,years){ p._college=years; p._collegeTier=tier; p.inSchool=true; p.schoolLevel=EDU[tier]+' (in progress)'; const cost=tier===1?6000:tier===2?30000:45000; p.money-=Math.min(p.money,cost); closeSheet(); log(`${p.first} enrolled — ${EDU[tier]}. ${years} years ahead.`,'good'); render(); }
-function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; closeSheet();
+function takeJob(p,k){ const c=CAREER(k); p.job=k; p.jobYears=0; p.salary=c.base; p._stage=null; p._stageYears=0; p._rung=0; closeSheet();
+  if(c.staged){ p._stage=0; p._stageYears=0; p.jobTitle=c.stages[0].t;
+    // a matching high-school club gives a head start
+    const cl=CLUBS.find(x=>x.helps===c.k);
+    let headstart='';
+    if(cl && hasFlag(p,cl.flag) && c.stages.length>1){ p._stage=1; p.jobTitle=c.stages[1].t; p.stats.fame=clamp(p.stats.fame+3); headstart=` Their ${cl.l.toLowerCase()} background got them straight to ${c.stages[1].t}.`; }
+    const intro={wwe:`${p.first} signed with an indie wrestling promotion. The road to the top starts here.`,
+      moviestar:`${p.first} landed their first gig as a background extra. Hollywood, someday.`,
+      tech:`${p.first} took a help desk job. Everyone starts somewhere.`,
+      boxer:`${p.first} laced up as an amateur boxer.`,
+      director:`${p.first} graduated film school, reel in hand and dreams bigger.`}[c.k]
+      || `${p.first} began the long climb in ${c.l.toLowerCase()}.`;
+    log(intro+headstart,'big'); render(); return;
+  }
   if(c.k==='nba')log(`${p.first} got drafted into the NBA. A dream, realized.`,'big');
   else if(c.wild)log(`${p.first} took the leap into ${c.l.toLowerCase()} life.`,'big');
   else log(`${p.first} started work as a ${c.l.toLowerCase()}.`,'good');
