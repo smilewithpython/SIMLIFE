@@ -573,7 +573,10 @@ function blankPerson(opt={}){
     escapeAttempts:0,  // bribes/escapes tried at current incarceration
     powers:[],         // superpowers (hero/villain)
     nemesis:null,      // {name, defeated} — hero's archenemy
-    henchman:null,     // {name, loyalty} — villain's minion
+    henchman:null,     // {name, loyalty} — villain's named lieutenant
+    minions:0,         // size of the villain's crew
+    minionPower:0,     // crew capability (0-100), boosts income/escape/evasion
+    doomsdayLevel:0,   // 0 none, 1 built, 2 armed, 3 world-threatening
     heat:0,            // villain notoriety/police attention
     acqTraits:[],      // acquired traits (handsome, anxious, genius...) that nudge stats
     prenup:false,      // signed a prenuptial agreement
@@ -654,6 +657,9 @@ function migrate(){
     if(!p.powers) p.powers=[];
     if(p.nemesis===undefined) p.nemesis=null;
     if(p.henchman===undefined) p.henchman=null;
+    if(p.minions==null) p.minions=0;
+    if(p.minionPower==null) p.minionPower=0;
+    if(p.doomsdayLevel==null) p.doomsdayLevel = hasFlag(p,'hasDoomsday')?1:0;
     if(p.heat==null) p.heat=0;
     if(!p.acqTraits) p.acqTraits=[];
     if(p.prenup==null) p.prenup=false;
@@ -1263,6 +1269,8 @@ function runJob(p){
       // pay scales with stage; villains (base 0) earn through heists scaled to their stage
       const heistBase = c.base>0 ? c.base : 40000;
       pay=Math.round(heistBase*Math.max(0.4,st.mult)*(0.8+Math.random()*0.5));
+      // a crew of minions running rackets boosts the villain's take significantly
+      if(p.minions>0){ const cut=Math.round(p.minions*(8000+(p.minionPower||0)*400)); pay+=cut; }
       p.salary=pay;
       // villain world-events: persistent mark on the world
       if(c.evil && p._stage>=2 && chance(20)){ worldEvent(p, pick([
@@ -1271,6 +1279,8 @@ function runJob(p){
         `${p.first} unleashed chaos across the capital.`]), {fear:true}); }
       // bust chance this year, reduced by sly trait, raised by stage and accumulated heat
       let bust=st.bust + (p.traits.includes('sly')?-4:0) - (p.traits.includes('lucky')?3:0) + Math.floor((p.heat||0)/10);
+      // a capable crew helps the boss evade capture
+      bust -= Math.round((p.minionPower||0)/12);
       if(c.evil) bust=Math.round(bust*0.55); // costumed villains evade capture more easily
       bust=Math.max(2,bust);
       // heat slowly cools each year
@@ -1940,11 +1950,35 @@ const CHOICE_EVENTS = [
     ]},
   { id:'villain_henchman', emoji:'🪤', title:'Recruit a henchman', once:true,
     when:p=>p.job==='villain'&&p._stage>=1, weight:2,
-    body:p=>`Every great villain needs muscle. ${capFirst(p.first)} can recruit a loyal henchman.`,
+    body:p=>`Every great villain needs muscle. ${capFirst(p.first)} can recruit a loyal lieutenant.`,
     choices:[
-      {label:'Hire a brutal enforcer', sub:'+power', effect:p=>{ p.henchman={name:villainName(),loyalty:60}; fx(p,{fame:4}); return `${p.first} recruited ${p.henchman.name}, a fearsome enforcer.`;}},
-      {label:'Build a robotic minion', sub:'+smarts, loyal', effect:p=>{ p.henchman={name:'Unit-'+(1+rnd(99)),loyalty:100}; fx(p,{smarts:3}); return `${p.first} built ${p.henchman.name}, an utterly loyal machine.`;}},
+      {label:'Hire a brutal enforcer', sub:'+crew', effect:p=>{ p.henchman={name:villainName(),loyalty:60}; p.minions=(p.minions||0)+3; p.minionPower=clamp((p.minionPower||0)+8); fx(p,{fame:4}); return `${p.first} recruited ${p.henchman.name} and a few goons. The crew grows.`;}},
+      {label:'Build a robotic minion', sub:'+smarts, loyal', effect:p=>{ p.henchman={name:'Unit-'+(1+rnd(99)),loyalty:100}; p.minions=(p.minions||0)+2; p.minionPower=clamp((p.minionPower||0)+10); fx(p,{smarts:3}); return `${p.first} built ${p.henchman.name}, an utterly loyal machine.`;}},
       {label:'Work alone', sub:'no liabilities', effect:p=>{ fx(p,{happy:2}); return `${p.first} trusts no one. Solo evil is cleaner.`;}},
+    ]},
+  { id:'villain_crew_offer', emoji:'🦹', title:'A gang seeks a leader', 
+    when:p=>p.job==='villain'&&p._stage>=1, weight:2,
+    body:p=>`A whole street gang wants ${p.first} to lead them. Instant manpower — and instant attention.`,
+    choices:[
+      {label:'Absorb them into your crew', sub:'+many minions', effect:p=>{ const add=4+rnd(6); p.minions=(p.minions||0)+add; p.minionPower=clamp((p.minionPower||0)+add); p.heat=(p.heat||0)+10; return `${p.first} absorbed the gang — ${add} new minions, but more eyes are watching now.`;}},
+      {label:'Take only the best', sub:'+quality crew', effect:p=>{ p.minions=(p.minions||0)+2; p.minionPower=clamp((p.minionPower||0)+12); return `${p.first} cherry-picked the sharpest few. Quality over quantity.`;}},
+      {label:'Refuse — too much heat', sub:'+caution', effect:p=>{ p.heat=Math.max(0,(p.heat||0)-5); return `${p.first} turned them away. Fewer mouths, fewer leaks.`;}},
+    ]},
+  { id:'villain_mutiny', emoji:'⚔️', title:'Mutiny in the ranks', 
+    when:p=>p.job==='villain'&&(p.minions||0)>=5, weight:1.5,
+    body:p=>`Some of ${p.first}'s minions are plotting to overthrow the boss and take the operation.`,
+    choices:[
+      {label:'Crush them ruthlessly', sub:'-crew, +control', effect:p=>{ const lost=1+rnd(3); p.minions=Math.max(0,p.minions-lost); p.minionPower=clamp((p.minionPower||0)+6); setFlag(p,'ruthless'); return `${p.first} made brutal examples of the ringleaders. The rest fell in line, terrified.`;}},
+      {label:'Buy their loyalty', sub:'-$$', effect:p=>{ const c=Math.min(p.money,100000+p.minions*5000); fx(p,{money:-c}); p.minionPower=clamp((p.minionPower||0)+10); return `${p.first} bought the crew's loyalty back with a fat payout.`;}},
+      {label:'Ignore it', sub:'risky', effect:p=>{ if(chance(50)){ const lost=2+rnd(4); p.minions=Math.max(0,p.minions-lost); p.minionPower=clamp((p.minionPower||0)-10); return `The mutiny succeeded in part — ${p.first} lost ${lost} minions to a rival.`;} return `The plot fizzled. ${p.first} got lucky this time.`;}},
+    ]},
+  { id:'villain_doomsday_test', emoji:'☢️', title:'Test the doomsday device', 
+    when:p=>p.job==='villain'&&(p.doomsdayLevel||0)>=1, weight:1.5,
+    body:p=>`${p.first}'s doomsday device is ready for a test. A demonstration would terrify the world.`,
+    choices:[
+      {label:'Demonstrate on a remote target', sub:'+terror, +heat', effect:p=>{ p.stats.fame=clamp(p.stats.fame+12); p.heat=(p.heat||0)+20; if((p.doomsdayLevel||0)<2)p.doomsdayLevel=2; worldEvent(p,`${p.first} demonstrated a doomsday weapon, leveling a remote island.`,{fear:true}); return `The world watched in horror as ${p.first}'s device proved terrifyingly real. It's armed now.`;}},
+      {label:'Keep it secret a while longer', sub:'+caution', effect:p=>{ return `${p.first} kept the device under wraps. The element of surprise is a weapon too.`;}},
+      {label:'It malfunctions', sub:'risk', effect:p=>{ if(chance(40)){ fx(p,{health:-15}); p.doomsdayLevel=Math.max(0,(p.doomsdayLevel||0)-1); return `The test went wrong — an explosion nearly killed ${p.first} and set the project back.`;} return `A minor glitch, quickly fixed. The device holds.`;}},
     ]},
   { id:'villain_betrayal', emoji:'🗡', title:'A henchman wavers', 
     when:p=>p.job==='villain'&&p.henchman&&p.henchman.loyalty<70, weight:2,
@@ -1958,7 +1992,7 @@ const CHOICE_EVENTS = [
     when:p=>p.job==='villain'&&p._stage>=2, weight:1.2,
     body:p=>`A hero offers ${p.first} a way out: use that genius for good, and the past can be forgiven.`,
     choices:[
-      {label:'Turn over a new leaf', sub:'become a hero', effect:p=>{ takeJobSilent(p,'superhero'); p.heat=0; clearFlag(p,'hasDoomsday'); fx(p,{happy:14}); worldEvent(p,`The feared ${p.first} renounced villainy and became a hero.`,{hope:true}); return `${p.first} chose redemption. A villain no more.`;}},
+      {label:'Turn over a new leaf', sub:'become a hero', effect:p=>{ takeJobSilent(p,'superhero'); p.heat=0; p.minions=0; p.minionPower=0; p.doomsdayLevel=0; clearFlag(p,'hasDoomsday'); fx(p,{happy:14}); worldEvent(p,`The feared ${p.first} renounced villainy and became a hero.`,{hope:true}); return `${p.first} chose redemption. A villain no more.`;}},
       {label:'Pretend, then betray', sub:'sinister', effect:p=>{ fx(p,{fame:6}); setFlag(p,'ruthless'); return `${p.first} played along just long enough to stab them in the back. Pure villainy.`;}},
       {label:'Laugh in their face', sub:'committed to evil', effect:p=>{ fx(p,{fame:5,happy:3}); return `${p.first} laughed. Evil it is, then.`;}},
     ]},
@@ -2344,6 +2378,10 @@ function showEscapeChoice(p, done){
   if(p.powers && p.powers.length){
     opts.push({l:`Use your powers (${p.powers[0]})`, sub:'best odds, escalates security', kind:'powers'});
   }
+  // a loyal crew on the outside can break the boss out
+  if((p.minions||0)>=3){
+    opts.push({l:`Have your crew break you out (${p.minions} minions)`, sub:'they storm the prison for the boss', kind:'crew'});
+  }
   opts.push({l:'Serve your time', sub:'wait it out', kind:'wait'});
 
   let html=`<div class="grab"></div>
@@ -2373,18 +2411,24 @@ function escapeFail(p, how){
 function resolveEscape(p, kind){
   if(kind==='wait'){ log(`${p.first} kept their head down and served the time.`,'muted'); return; }
   const sly = p.traits.includes('sly')?10:0, lucky=p.traits.includes('lucky')?8:0;
+  const crew = Math.round((p.minionPower||0)/8); // a capable crew improves any escape
   const lifePenalty = p.lifeSentence?18:0; // hardest crimes are harder to walk away from
   if(kind==='bribe'){
     const cost=50000*((p.securityLevel||0)+1);
     if(p.money<cost){ log(`${p.first} couldn't raise the ${money(cost)} bribe.`,'muted'); return; }
     p.money-=cost;
-    if(chance(45+sly+lucky-lifePenalty)) escapeFree(p,'The bribe worked.'); else escapeFail(p,'The guard took the money and ratted.');
+    if(chance(45+sly+lucky+crew-lifePenalty)) escapeFree(p,'The bribe worked.'); else escapeFail(p,'The guard took the money and ratted.');
   } else if(kind==='force'){
-    if(chance(30+sly+lucky+(p.stats.athletic*0.2)-lifePenalty)) escapeFree(p,'A bloody breakout.'); else escapeFail(p,'The breakout was crushed.');
+    if(chance(30+sly+lucky+crew+(p.stats.athletic*0.2)-lifePenalty)) escapeFree(p,'A bloody breakout.'); else escapeFail(p,'The breakout was crushed.');
   } else if(kind==='powers'){
-    if(chance(60+lucky-lifePenalty)) escapeFree(p,'Your powers tore the cell apart.'); else escapeFail(p,'Even your powers weren\'t enough this time.');
+    if(chance(60+lucky+crew-lifePenalty)) escapeFree(p,'Your powers tore the cell apart.'); else escapeFail(p,'Even your powers weren\'t enough this time.');
   } else if(kind==='vault'){
-    if(chance(10+lucky+(p.powers.length?18:0))) escapeFree(p,'Against all odds, the Vault was beaten.'); else escapeFail(p,'The Vault held.');
+    if(chance(10+lucky+crew+(p.powers.length?18:0))) escapeFree(p,'Against all odds, the Vault was beaten.'); else escapeFail(p,'The Vault held.');
+  } else if(kind==='crew'){
+    // crew raid: strong crews can spring the boss even from high security
+    const odds = 25 + (p.minionPower||0)/2 + lucky - lifePenalty - (p.securityLevel||0)*10;
+    if(chance(odds)){ escapeFree(p,`${p.first}'s crew stormed the walls and broke them out!`); }
+    else { if((p.minions||0)>0){ const lost=1+rnd(2); p.minions=Math.max(0,p.minions-lost); } escapeFail(p,'The raid was repelled and the crew took losses.'); }
   }
 }
 
@@ -3355,6 +3399,42 @@ function doAdopt(p){
 /* ============================================================
    ACTIVITIES PANEL  (jobs, school, fun, crime, etc)
    ============================================================ */
+// ===== VILLAIN: pick a specific heist target (payouts scale with net worth) =====
+function openHeistMenu(p){
+  closeSheet();
+  const net=Math.max(0,p.money);
+  const targets=[
+    {e:'🏪',n:'Corner store',          min:1000000,  pct:0.05, heat:6,  diff:5,  need:0},
+    {e:'🏦',n:'Bank vault',            min:1000000,  pct:0.10, heat:14, diff:14, need:0},
+    {e:'💎',n:'Jewelry exchange',      min:2000000,  pct:0.14, heat:18, diff:18, need:0},
+    {e:'🏛',n:'Federal reserve',       min:5000000,  pct:0.20, heat:28, diff:26, need:4},
+    {e:'🚂',n:'Armored gold train',    min:8000000,  pct:0.25, heat:30, diff:30, need:6},
+    {e:'🏝',n:'Offshore data-bank',    min:20000000, pct:0.35, heat:35, diff:34, need:10, smarts:75},
+    {e:'🌐',n:'Global crypto exchange',min:40000000, pct:0.50, heat:40, diff:40, need:14, smarts:80},
+  ];
+  const opts=[];
+  targets.forEach(t=>{
+    const locked = (p.minions||0)<t.need || (t.smarts && p.stats.smarts<t.smarts);
+    let take=Math.max(t.min, Math.round(net*t.pct));
+    if(p.doomsdayLevel>=2) take=Math.round(take*1.8);
+    const sub = locked ? (t.smarts&&p.stats.smarts<t.smarts?`needs smarts ${t.smarts}+`:`needs ${t.need}+ minions`) : `~${money(take)} · heat +${t.heat}`;
+    opts.push(O(t.e,t.n,sub,0,()=>{ closeSheet();
+      const botch=chance(Math.max(4, t.diff - (p.minionPower||0)/4));
+      let got=take;
+      if(botch){ got=Math.round(take*0.25); p.heat=(p.heat||0)+t.heat+15; p.stats.health=clamp(p.stats.health-10);
+        if((p.minions||0)>0 && chance(40)){ p.minions--; log(`The ${t.n.toLowerCase()} job went sideways — ${p.first} escaped with ${money(got)}, lost a crew member, and drew serious heat.`,'bad'); }
+        else log(`The ${t.n.toLowerCase()} job went loud — only ${money(got)} and a lot of heat.`,'bad');
+      } else {
+        p.heat=(p.heat||0)+t.heat; p.stats.fame=clamp(p.stats.fame+4);
+        log(`${p.first} hit the ${t.n.toLowerCase()} for ${money(got)}.${(p.minions||0)>0?' The crew executed flawlessly.':''}`,'big');
+      }
+      p.money+=got; render();
+    }, locked));
+  });
+  let html=`<div class="grab"></div><h3>Choose a target</h3><p class="hint">Bigger scores need a bigger crew. Payouts scale with your empire.</p>`;
+  sheet(html+opts.join(''), sh=>bindOpts(sh));
+}
+
 /* ============================================================
    CAREER TAB — status, advancement, and per-profession choices
    ============================================================ */
@@ -3678,11 +3758,62 @@ function openActivities(){
     opts.push(O('🏛','Build a secret lair','-$, +edge',0,()=>{ if(p.money<50000){closeSheet();log(`${p.first} can't afford a proper lair yet.`,'muted');render();return;} p.money-=50000; setFlag(p,'hasLair'); closeSheet(); log(`${p.first} built a hidden headquarters. Every hero needs one.`,'big'); render(); }));
   }
   if(p.job==='villain' && !p.inPrison){
-    opts.push(OH('— Villainy —'));
-    opts.push(O('💣','Commit a crime spree',`+money, +heat (${p.heat||0})`,0,()=>{ closeSheet(); const take=20000+rnd(300000); p.money+=take; p.heat=(p.heat||0)+15; p.stats.fame=clamp(p.stats.fame+3); log(`${p.first} went on a crime spree — ${money(take)} richer, and more wanted than ever.`,'bad'); render(); }));
-    opts.push(O('🦹','Recruit minions','build your army',0,()=>{ closeSheet(); if(!p.henchman){ p.henchman={name:villainName(),loyalty:60}; log(`${p.first} recruited ${p.henchman.name} to their cause.`,'good'); } else { p.henchman.loyalty=clamp(p.henchman.loyalty+15); log(`${p.first} strengthened their grip on ${p.henchman.name}.`,'good'); } render(); }));
-    opts.push(O('🌡','Lay low','cool the heat',0,()=>{ closeSheet(); p.heat=Math.max(0,(p.heat||0)-25); p.stats.happy=clamp(p.stats.happy+2); log(`${p.first} went quiet for a while. The authorities lost the trail.`,'muted'); render(); }));
-    opts.push(O('🔬','Build a doomsday device','-$, +terror',0,()=>{ if(p.money<100000){closeSheet();log(`${p.first} lacks the funds for such a device.`,'muted');render();return;} p.money-=100000; setFlag(p,'hasDoomsday'); closeSheet(); worldEvent(p,`${p.first} unveiled a terrifying doomsday device.`,{fear:true}); render(); }));
+    opts.push(OH(`— Villainy — ${p.minions||0} minions · crew power ${Math.round(p.minionPower||0)} · heat ${p.heat||0} 🔥`));
+    // CRIME SPREE — scales with net worth so big-time villains pull big-time scores
+    opts.push(O('💣','Commit a crime spree','+money (scales with your empire), +heat',0,()=>{ closeSheet();
+      const net=Math.max(0, p.money);
+      // base minimum $1M; if you're already rich, the score is a % of net worth
+      const pct = 0.08 + Math.random()*0.12 + (p.minionPower||0)/500; // 8-20% + crew bonus
+      let take = Math.max(1000000, Math.round(net*pct));
+      // a doomsday device or big crew lets you attempt truly massive scores
+      if(p.doomsdayLevel>=2) take = Math.round(take*2.5);
+      // crew reduces the chance things go wrong
+      const botched = chance(Math.max(5, 30 - (p.minionPower||0)/3));
+      if(botched){ p.heat=(p.heat||0)+30; p.stats.health=clamp(p.stats.health-8); take=Math.round(take*0.3); log(`${p.first}'s heist went loud — escaped with only ${money(take)}, and the heat is rising fast.`,'bad'); }
+      else { p.heat=(p.heat||0)+12; p.stats.fame=clamp(p.stats.fame+3); log(`${p.first} pulled off a ${money(take)} score. ${p.minions>0?`The crew handled it clean.`:''}`,'big'); }
+      p.money+=take; render();
+    }));
+    // pick a specific target heist
+    opts.push(O('🏦','Plan a specific heist','choose your target',0,()=>{ openHeistMenu(p); }));
+    // MINIONS
+    opts.push(O('🦹','Recruit minions',`grow your crew (${p.minions||0})`,0,()=>{ closeSheet();
+      const batch=2+rnd(4); p.minions=(p.minions||0)+batch;
+      p.minionPower=clamp((p.minionPower||0)+batch*1.5+rnd(4));
+      // a named lieutenant emerges once you have a crew
+      if(!p.henchman && p.minions>=4){ p.henchman={name:villainName(),loyalty:65}; log(`${p.first} recruited ${batch} more to the crew — and ${p.henchman.name} rose up as right-hand enforcer.`,'good'); }
+      else log(`${p.first} recruited ${batch} more minions. The crew is ${p.minions} strong now.`,'good');
+      render();
+    }));
+    if(p.minions>0){
+      opts.push(O('🎯','Train your crew','-$, +crew power',0,()=>{ closeSheet();
+        const cost=Math.min(p.money, 20000+p.minions*2000); p.money-=cost; p.minionPower=clamp((p.minionPower||0)+8+rnd(6));
+        log(`${p.first} drilled the crew into a sharper, deadlier outfit.`,'good'); render();
+      }));
+      opts.push(O('🛡','Send minions to cool the heat','crew takes the fall',0,()=>{ closeSheet();
+        const drop=15+Math.round((p.minionPower||0)/5); p.heat=Math.max(0,(p.heat||0)-drop);
+        if(chance(25)){ p.minions=Math.max(0,p.minions-1); log(`A minion took the fall for ${p.first} — heat dropped, but the crew lost one.`,'muted'); }
+        else log(`${p.first}'s crew muddied the trail. Heat down ${drop}.`,'good');
+        render();
+      }));
+    }
+    opts.push(O('🌡','Lay low','cool the heat yourself',0,()=>{ closeSheet(); p.heat=Math.max(0,(p.heat||0)-25); p.stats.happy=clamp(p.stats.happy+2); log(`${p.first} went quiet for a while. The authorities lost the trail.`,'muted'); render(); }));
+    // DOOMSDAY DEVICE — now a multi-stage project that pays off
+    opts.push(OH(`— Doomsday device ${['(none)','(built)','(armed)','(WORLD THREAT)'][p.doomsdayLevel||0]} —`));
+    if((p.doomsdayLevel||0)===0){
+      opts.push(O('🔬','Build a doomsday device','$250,000 · begin the project',0,()=>{ if(p.money<250000){closeSheet();log(`${p.first} lacks the funds (needs $250,000).`,'muted');render();return;} p.money-=250000; p.doomsdayLevel=1; setFlag(p,'hasDoomsday'); closeSheet(); worldEvent(p,`${p.first} began constructing a doomsday device.`,{fear:true}); log(`${p.first} built the core of a doomsday device. It needs to be armed.`,'big'); render(); }));
+    } else if((p.doomsdayLevel||0)===1){
+      opts.push(O('⚙️','Arm the device','$500,000 · make it operational',0,()=>{ if(p.money<500000){closeSheet();log(`${p.first} needs $500,000 to arm it.`,'muted');render();return;} p.money-=500000; p.doomsdayLevel=2; closeSheet(); worldEvent(p,`${p.first}'s doomsday device is now operational. The world is afraid.`,{fear:true}); log(`The device is ARMED. ${p.first} can now hold the world to ransom.`,'big'); render(); }));
+    } else if((p.doomsdayLevel||0)>=2){
+      opts.push(O('🌍','Ransom the world','demand a fortune · +huge heat',0,()=>{ closeSheet();
+        const ransom = Math.max(50000000, Math.round(Math.max(p.money,10000000)*(0.5+Math.random())));
+        p.money+=ransom; p.heat=(p.heat||0)+40; p.stats.fame=clamp(p.stats.fame+15);
+        worldEvent(p,`${p.first} held the world hostage and extorted ${money(ransom)}.`,{fear:true});
+        log(`The nations of Earth paid ${p.first} ${money(ransom)} to stand down. For now.`,'big'); render();
+      }));
+      if((p.doomsdayLevel||0)===2){
+        opts.push(O('☢️','Threaten total annihilation','escalate to world-domination bid',0,()=>{ closeSheet(); p.doomsdayLevel=3; worldEvent(p,`${p.first} threatened to end the world unless crowned its ruler.`,{fear:true}); log(`${p.first} escalated to an outright bid for world domination. The heroes are coming.`,'big'); render(); }));
+      }
+    }
   }
 
   // FREE TIME EXTRAS (nightlife, social, gambling, crime, etc.)
@@ -4130,6 +4261,8 @@ function openSelf(){
     ${p.powers&&p.powers.length?`<br><span style="color:var(--sky)">Powers: ${p.powers.join(', ')}</span>`:''}
     ${p.nemesis?`<br><span style="color:var(--blood)">Nemesis: ${p.nemesis.name} (defeated ${p.nemesis.defeated}×)</span>`:''}
     ${p.henchman?`<br><span style="color:var(--gold)">Henchman: ${p.henchman.name} (loyalty ${Math.round(p.henchman.loyalty)})</span>`:''}
+    ${p.minions>0?`<br><span style="color:var(--gold)">Crew: ${p.minions} minions · power ${Math.round(p.minionPower||0)}</span>`:''}
+    ${p.doomsdayLevel>0?`<br><span style="color:var(--blood)">Doomsday device: ${['','built','ARMED','WORLD THREAT'][p.doomsdayLevel]}</span>`:''}
     ${p.job==='villain'&&p.heat?`<br><span style="color:var(--blood)">Heat: ${p.heat} 🔥</span>`:''}
     ${p.inPrison&&p.securityLevel?`<br><span style="color:var(--blood)">Held in ${SECURITY_NAMES[p.securityLevel]}</span>`:''}
     ${p.inPrison&&(p.prisonRep||0)>0?`<br><span style="color:var(--gold)">Prison respect: ${Math.round(p.prisonRep)}/100${p.prisonRole==='shotcaller'?' · runs the block 👑':''}</span>`:''}
