@@ -16,7 +16,7 @@ function openHomelander(){
     <div style="padding:2px 20px">`;
   // progress
   html+=`<div style="background:var(--panel-2);border-radius:12px;padding:12px 14px;border:1px solid rgba(120,140,200,.25);margin-bottom:10px">
-    <div style="font-size:13px;color:var(--sky)">Powers: <b>${p.powers.length}/${TOTAL_POWERS}</b> <span style="color:var(--ink-faint);font-size:11px">(this gen can gain ${Math.max(0,2-(p.powersGained||0))} more)</span></div>
+    <div style="font-size:13px;color:var(--sky)">Powers: <b>${p.powers.length}/${TOTAL_POWERS}</b> <span style="color:var(--ink-faint);font-size:11px">(this gen can gain ${Math.max(0,POWERS_PER_GEN-(p.powersGained||0))} more)</span></div>
     <div style="height:6px;background:rgba(255,255,255,.08);border-radius:5px;margin:6px 0;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(p.powers.length/TOTAL_POWERS*100)}%;background:linear-gradient(90deg,var(--sky),var(--gold))"></i></div>
     <div style="font-size:13px;color:var(--gold)">Vault: <b>${reqHave}/${REQUIRED_VAULT}</b> required${optHave?` · +${optHave} optional`:''}</div>
     <div style="height:6px;background:rgba(255,255,255,.08);border-radius:5px;margin:6px 0;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(reqHave/REQUIRED_VAULT*100)}%;background:linear-gradient(90deg,var(--blood),var(--gold))"></i></div>
@@ -379,7 +379,7 @@ function endHomelander(p, mode){
   // burn powers (never below what device demands)
   const lose=Math.min(burn, Math.max(0, p.powers.length-(mode==='device'?0:2)));
   for(let i=0;i<lose;i++){ if(p.powers.length>(mode==='device'?0:2)) p.powers.splice(rnd(p.powers.length),1); }
-  p.powersGained=2;
+  p.powersGained=POWERS_PER_GEN;
   // vault fate
   if(!keepsVault && mode!=='device'){ G.vault=(G.vault||[]).filter(()=>chance(50)); }
   else if(mode==='device'){ G.vault=[]; }

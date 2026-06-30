@@ -1362,7 +1362,7 @@ const CHOICE_EVENTS = [
     ]},
   // ========== SUPERPOWER ORIGINS (rare, for anyone) ==========
   { id:'power_accident', emoji:'⚡', title:'A freak accident', once:true,
-    when:p=>p.age>=12&&(p.powersGained||0)<2&&p.powers.length<TOTAL_POWERS&&((!p.powers||!p.powers.length)||chance(60)), weight:0.6,
+    when:p=>p.age>=12&&(p.powersGained||0)<POWERS_PER_GEN&&p.powers.length<TOTAL_POWERS&&((!p.powers||!p.powers.length)||chance(60)), weight:0.6,
     body:p=>`A bizarre accident — a lab spill, a strange storm, something that shouldn't be possible — leaves ${p.first} changed.`,
     choices:[
       {label:'Embrace the change', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{happy:6}); if(pow)return `${p.first} woke up… different. They can ${pow} now. The world just shifted.`; return `${p.first} felt different, but this generation's potential was already spent.`;}},
@@ -1370,14 +1370,14 @@ const CHOICE_EVENTS = [
       {label:'Get checked by doctors', sub:'safe', effect:p=>{ fx(p,{health:4}); return `${p.first} got examined. The doctors found nothing… or so they said.`;}},
     ]},
   { id:'power_mentor', emoji:'🧙', title:'A mysterious mentor', once:true,
-    when:p=>p.age>=16&&p.powers&&p.powers.length>=1&&(p.powersGained||0)<2&&p.powers.length<TOTAL_POWERS, weight:1,
+    when:p=>p.age>=16&&p.powers&&p.powers.length>=1&&(p.powersGained||0)<POWERS_PER_GEN&&p.powers.length<TOTAL_POWERS, weight:1,
     body:p=>`A strange figure approaches ${p.first}, claiming they can unlock abilities ${p.first} never knew they had.`,
     choices:[
       {label:'Train under them', sub:'gain a power', effect:p=>{ const pow=grantPower(p); fx(p,{smarts:3}); if(pow)return `Through grueling training, ${p.first} unlocked a new power: ${pow}.`; return `${p.first} trained hard, but this generation had already reached its limit.`;}},
       {label:'Refuse the stranger', sub:'safe', effect:p=>{ fx(p,{happy:2}); return `${p.first} walked away from the offer. Some doors are better left closed.`;}},
     ]},
   { id:'power_artifact', emoji:'🔮', title:'An ancient artifact', once:true,
-    when:p=>p.age>=18&&(p.powersGained||0)<2&&p.powers.length<TOTAL_POWERS&&(p.money>100000||p.stats.fame>30||(p.powers&&p.powers.length>0)), weight:0.5,
+    when:p=>p.age>=18&&(p.powersGained||0)<POWERS_PER_GEN&&p.powers.length<TOTAL_POWERS&&(p.money>100000||p.stats.fame>30||(p.powers&&p.powers.length>0)), weight:0.5,
     body:p=>`${p.first} comes into possession of an artifact humming with impossible energy.`,
     choices:[
       {label:'Harness its power', sub:'gain a power, risk', effect:p=>{ if(chance(25)){ fx(p,{health:-20}); return `The artifact's power overwhelmed ${p.first}. They nearly died touching it.`;} const pow=grantPower(p); fx(p,{fame:5}); if(pow)return `The artifact bonded with ${p.first}. They can ${pow} now.`; return `${p.first} felt its power, but couldn't hold it.`;}},

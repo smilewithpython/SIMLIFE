@@ -224,6 +224,7 @@ const POWERS=[
   'telekinesis','technopathy','time manipulation','dimensional pocket','astral projection','cosmic awareness'
 ];
 const TOTAL_POWERS = POWERS.length; // 50 — the bloodline must acquire them all to beat Homelander
+const POWERS_PER_GEN = 3; // max new powers one character can gain in their lifetime
 // Power rarity (affects how readily events grant them)
 const POWER_RARITY = {
   'super strength':'common','super speed':'common','regeneration':'common','elemental control':'common',
@@ -421,7 +422,7 @@ function grantPower(p, force){
   // a character can only acquire 2 NEW powers per generation (beyond what they inherited).
   // `force` bypasses the cap (used by the Homelander victory transfer, etc.)
   if(!force){
-    if((p.powersGained||0) >= 2) return null;
+    if((p.powersGained||0) >= POWERS_PER_GEN) return null;
   }
   const avail=POWERS.filter(x=>!p.powers.includes(x));
   if(!avail.length) return null;
@@ -578,7 +579,7 @@ function blankPerson(opt={}){
     securityLevel:0,   // 0 normal, 1 max security, 2 superprison (the Vault)
     escapeAttempts:0,  // bribes/escapes tried at current incarceration
     powers:[],         // superpowers (hero/villain)
-    powersGained:0,    // new powers acquired this generation (cap 2)
+    powersGained:0,    // new powers acquired this generation (cap = POWERS_PER_GEN)
     nemesis:null,      // {name, defeated} — hero's archenemy
     sidekick:null,     // {name, bond} — hero's partner
     heroRep:0,         // hero reputation / public trust (0-100)
