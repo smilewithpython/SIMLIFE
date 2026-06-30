@@ -224,7 +224,7 @@ function runYear(){
 
   // BLOODLINE POWERS: a descendant born with inherited powers may manifest a new latent ability
   // as they grow (automatic path toward the 2-per-generation cap). Events provide the rest.
-  if(p.powers && p.powers.length>0 && (p.powersGained||0)<POWERS_PER_GEN && p.powers.length<TOTAL_POWERS && p.age>=8 && chance(7)){
+  if(p.powers && p.powers.length>0 && (p.powersGained||0)<POWERS_PER_GEN && p.powers.length<TOTAL_POWERS && p.age>=8 && chance(8)){
     const pow=grantPower(p);
     if(pow) log(`${p.first}'s inherited bloodline awakened a new power: ${pow}.`,'big');
   }
