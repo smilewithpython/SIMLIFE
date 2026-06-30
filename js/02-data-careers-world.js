@@ -198,6 +198,9 @@ const CAREERS=[
       {t:'IPO — Public CEO',   mult:45,   years:3, req:90, fame:60},
     ]},
 ];
+// Display careers alphabetically by title; 'none' (Drifting) stays first. Purely cosmetic —
+// every lookup is by key via CAREER(k), and nothing indexes CAREERS by position.
+CAREERS.sort((a,b)=> a.k==='none' ? -1 : b.k==='none' ? 1 : a.l.localeCompare(b.l));
 const CAREER=k=>CAREERS.find(c=>c.k===k);
 
 // High-school clubs: joining gives yearly stat growth + a head-start flag for matching careers

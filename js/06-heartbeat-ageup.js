@@ -293,6 +293,12 @@ function systemsTick(p){
   // stress bleeds into health
   if(p.stress>60){ p.stats.health=clamp(p.stats.health-(p.stress-60)*0.08); if(chance(6)){p.conditions.push('high blood pressure');log(`Years of stress caught up — ${p.first} was diagnosed with high blood pressure.`,'bad');p.stress=clamp(p.stress-20);} }
   p.stress=clamp(p.stress-3);
+  // the quiet weight some characters carry never fully lifts — a small, persistent drag,
+  // with a chance late in life to finally set it down (which the eulogy then reflects)
+  if(hasFlag(p,'ch_carriesWeight') && !hasFlag(p,'foundPeace')){
+    p.stats.happy=clamp(p.stats.happy-1.2); p.stress=clamp(p.stress+1);
+    if(p.age>58 && chance(8)){ setFlag(p,'foundPeace',true); p.stats.happy=clamp(p.stats.happy+12); p.stress=clamp(p.stress-12); log(`After carrying it so long, ${p.first} finally made a quiet peace with the thing they'd never spoken of.`,'big'); }
+  }
   // addictions (each drags stats; small yearly chance to beat one, severity makes it harder)
   if(p.addictions && p.addictions.length){
     p.addictions.slice().forEach(a=>{

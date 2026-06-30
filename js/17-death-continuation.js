@@ -117,6 +117,45 @@ function lifeSummary(p){
   return { achievements: items, moments: bigMoments };
 }
 
+// The quieter ledger: the moral weight a life carried, surfaced as closing
+// reflections on the death screen. These pay off the seeds planted by the
+// Part 3–6 chains (rivalry, mentor, career reckonings, the cost of powers,
+// the bloodline's echoes) — never announced in-life, only remembered at the end.
+function lifeLegacy(p){
+  const L=[], f=p.flags||{};
+  // --- Part 3 — rivalry & mentor ---
+  if(f.ch_rivalEnd==='peace') L.push('Made peace with their oldest rival before the end — the respect, it turned out, outlived the rivalry.');
+  else if(f.ch_rivalEnd==='unresolved') L.push('Carried a rivalry all the way to the grave. Some scores are never settled, only set down.');
+  if(f.ch_mentorLegacy==='protected') L.push('Guarded the memory of the mentor who shaped them — the good and the buried both — to the very last.');
+  else if(f.ch_mentorLegacy==='exposed') L.push('Told the whole truth about the one who made them, gift and rot together, and let history sort it out.');
+  // --- Part 4 — career reckonings ---
+  if(f.cc_errorLegacy==='owned') L.push('When a life was lost on their table, chose the truth over the career — and could always meet their own eyes after.');
+  else if(f.cc_errorLegacy==='stained'||f.cc_errorLegacy==='survived') L.push('A fatal error in the operating room, and the long fight to outrun it, shadowed an otherwise able career.');
+  if(f.cc_mergerSoldout) L.push('Closed the deal that made a fortune and cost hundreds their livelihoods. That tradeoff followed the name to the end.');
+  if(f.cc_voteAgainstConscience) L.push('Once cast a vote against their own conscience to keep a seat. The ledger of it outlived the term.');
+  if(f.cc_filmProtected) L.push('Fought the studio and won — a body of work made exactly as intended, whatever it cost to protect.');
+  if(f.cc_acqRegret) L.push('Sold the thing they built and watched it gutted, and wondered ever after what holding on might have meant.');
+  if(f.cc_out==='clean'||f.cc_outDone&&f.cc_out!=='refused') L.push('Walked out of a life in organized crime and lived — a rarer ending than that world usually allows.');
+  // --- Part 5 — the cost of power ---
+  if(f.pw_mindHollow) L.push("Held a marriage together with a power instead of the truth — and knew, every quiet morning, that it wasn't real.");
+  else if(f.pw_choseReal) L.push('Had the power to force a heart open and chose, instead, to let love be real or be nothing at all.');
+  if(f.pw_laserGuilt) L.push("Learned young that what they carried could hurt people who'd done nothing to deserve it, and never fully set that knowledge down.");
+  if(f.pw_healGrief) L.push('Could knit any wound whole but the one that mattered most. Carried that specific, private grief to the end.');
+  if(f.pw_rewound) L.push('Once tore three seconds open to pull someone they loved back from death — and lived on as the only soul who remembered the world where they were gone.');
+  if(f.pw_carriedMoment) L.push("Heard a dying parent's last unspoken thought, and kept it, wordless, forever.");
+  if(f.pw_precogTold) L.push('Saw how their own story would end, and chose not to carry that knowing alone.');
+  else if(f.pw_precogAccepted) L.push('Saw their own ending coming and met it with intention — gentler, more present, for the knowing.');
+  if(f.pw_invisUsed) L.push('Used an unseen gift to learn what they should not have, and let it guide a hand that never once confessed the source.');
+  // --- Part 6 — the bloodline's echoes ---
+  if(f.ge_portalUsed) L.push("Picked up an ancestor's impossible, abandoned work — and finished it. For better, mostly.");
+  else if(f.ge_portalDone) L.push('Closed a door an ancestor had left ajar for generations, and ended quietly what the bloodline began.');
+  if(f.ge_crimeRefused) L.push('Turned down an empire that was theirs by blood, and stayed mostly clear of its long shadow.');
+  // --- the recurring weight ---
+  if(f.ch_carriesWeight && !f.foundPeace) L.push('Carried something heavy and unspoken for the better part of a lifetime, and told almost no one.');
+  else if(f.ch_carriesWeight && f.foundPeace) L.push('Carried something heavy for most of a life — and, near the end, finally set it down.');
+  return L;
+}
+
 function heirsOf(p){
   // direct children first
   const kids = p.childrenIds.map(id=>findP(G,id)).filter(k=>k&&k.alive);
@@ -150,6 +189,12 @@ function deathScreen(deceased){
          <div style="font-size:11px;color:var(--gold);letter-spacing:1.5px;font-variant:small-caps;margin-bottom:6px">Defining moments</div>
          ${sum.moments.slice(-6).map(m=>`<div style="font-size:12.5px;color:var(--ink-dim);padding:3px 0;font-style:italic">${m}</div>`).join('')}
        </div>` : '';
+  const leg = lifeLegacy(deceased);
+  const legHtml = leg.length
+    ? `<div style="text-align:left;margin-top:14px">
+         <div style="font-size:11px;color:var(--gold);letter-spacing:1.5px;font-variant:small-caps;margin-bottom:6px">What they carried</div>
+         ${leg.map(m=>`<div style="font-size:12.5px;color:var(--ink-dim);padding:4px 0;font-style:italic;border-bottom:1px solid var(--line)">${m}</div>`).join('')}
+       </div>` : '';
 
   root.innerHTML=`
   <div class="scrim center">
@@ -162,6 +207,7 @@ function deathScreen(deceased){
       <p style="color:var(--gold)">Estate worth ${money(estate)}${heirs.length?', and '+heirs.length+' to carry it on.':'.'}</p>
       ${achHtml}
       ${momentsHtml}
+      ${legHtml}
       <div id="heirpick"></div>
     </div>
   </div>`;
