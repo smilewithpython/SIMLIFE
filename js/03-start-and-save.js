@@ -31,6 +31,8 @@ function migrate(){
   if(!G.country) G.country=(G.hometown||'').split(', ')[1]||null;
   // power transfusion: promote old per-character flag to bloodline-level unlock
   if(!G.transfusionUnlocked){ G.people.forEach(px=>{ if(px.flags&&px.flags.transfusionResearch) G.transfusionUnlocked=true; }); }
+  // chromosomal mixing: bloodline-level unlock (no old flag to promote, just ensure the field exists)
+  if(G.chromosomalMixing==null) G.chromosomalMixing=false;
   G.people.forEach(p=>{
     if(!p.portfolio) p.portfolio={low:0,med:0,high:0};
     if(!p.businesses) p.businesses=[];

@@ -220,6 +220,21 @@ function openIntimacy(p){
     }));
   } else if(p.pregnant){
     opts.push(OH('Already expecting — see the doctor in Health for prenatal care.'));
+  } else if(G.chromosomalMixing){
+    // chromosomal mixing unlocked by a Mad Scientist ancestor — biological children for all couples
+    opts.push(O('🧪','Chromosomal mixing — try for a biological child','$35,000 · full power inheritance',0,()=>{
+      if(p.money<35000){ closeSheet(); log(`${p.first} can't afford the chromosomal mixing procedure right now.`,'muted'); render(); return; }
+      p.money-=35000; p.stats.happy=clamp(p.stats.happy+5); if(mate)mate.bond=clamp(mate.bond+5); closeSheet();
+      if(chance(55)){
+        const child=makeChild(p,{});
+        p.stats.happy=clamp(p.stats.happy+10);
+        log(`The chromosomal mixing worked. A child was born — ${child.first} ${child.last}. Biological, carrying the full bloodline.`,'birth');
+      } else {
+        log(`The chromosomal mixing didn't take this cycle. The science is imperfect — but the door is still open.`,'muted');
+      }
+      render();
+    }));
+    opts.push(OH('Chromosomal mixing: a Mad Scientist breakthrough that lets any couple have biological children.'));
   } else {
     opts.push(OH('A natural pregnancy isn\'t in the cards — but adoption and fertility clinics are options.'));
   }
