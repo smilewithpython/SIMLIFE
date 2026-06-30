@@ -195,6 +195,20 @@ function deathScreen(deceased){
          <div style="font-size:11px;color:var(--gold);letter-spacing:1.5px;font-variant:small-caps;margin-bottom:6px">What they carried</div>
          ${leg.map(m=>`<div style="font-size:12.5px;color:var(--ink-dim);padding:4px 0;font-style:italic;border-bottom:1px solid var(--line)">${m}</div>`).join('')}
        </div>` : '';
+  // relationships note (module 36) — the people side of the ledger
+  let relHtml='';
+  if(typeof relationshipObituary==='function'){
+    const relLines = relationshipObituary(deceased);
+    if(relLines.length){
+      const joined = relLines.length>1
+        ? relLines.slice(0,-1).join(', ')+', and '+relLines[relLines.length-1]
+        : relLines[0];
+      relHtml = `<div style="text-align:left;margin-top:14px">
+         <div style="font-size:11px;color:var(--gold);letter-spacing:1.5px;font-variant:small-caps;margin-bottom:6px">Those they leave behind</div>
+         <div style="font-size:12.5px;color:var(--ink-dim);padding:4px 0;font-style:italic">${deceased.first} died with ${joined}.</div>
+       </div>`;
+    }
+  }
 
   root.innerHTML=`
   <div class="scrim center">
@@ -207,6 +221,7 @@ function deathScreen(deceased){
       <p style="color:var(--gold)">Estate worth ${money(estate)}${heirs.length?', and '+heirs.length+' to carry it on.':'.'}</p>
       ${achHtml}
       ${momentsHtml}
+      ${relHtml}
       ${legHtml}
       <div id="heirpick"></div>
     </div>

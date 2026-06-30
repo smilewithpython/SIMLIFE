@@ -7,10 +7,13 @@ let _nid=-100;
 function nid(){ return _nid--; }
 
 function relTick(p){
-  // bond drift + kin mortality
+  // structured per-relationship decay / repair bookkeeping (module 36).
+  // Replaces the old flat random drift with type-based decay that only applies
+  // to relationships the player didn't meaningfully tend this year.
+  if(typeof relYearProcess==='function') relYearProcess(p);
+  // kin mortality
   p.rels.forEach(r=>{
     if(!r.alive) return;
-    r.bond = clamp(r.bond + rndDrift(2));
     // parents/elders age out
     if((r.kind==='Mother'||r.kind==='Father') && chance(p.age>40?9:1.2)){ r.alive=false; log(`${p.first}'s ${r.kind.toLowerCase()} passed away.`,'death'); p.stats.happy=clamp(p.stats.happy-12);}
     else if(chance(0.5+ (p.age>60?2:0))){ r.alive=false; if(r.kind==='Spouse'){p.married=false;recordPartner(p,r,'Late spouse');log(`${r.name.split(' ')[0]} passed away. ${p.first} is a widow${p.sex==='m'?'er':''} now.`,'death');p.stats.happy=clamp(p.stats.happy-20);} }
@@ -29,13 +32,20 @@ function openRelations(){
   const rels=[...p.rels].sort((a,b)=>(order[a.kind]??9)-(order[b.kind]??9));
   if(!rels.length) html+=`<p class="hint">No one close right now.</p>`;
   rels.forEach((r,i)=>{
-    const col=r.bond>66?'--sage':r.bond>33?'--gold':'--blood';
+    const col = (typeof bondStateColor==='function') ? bondStateColor(r.bond) : (r.bond>66?'--sage':r.bond>33?'--gold':'--blood');
+    const stateName = (typeof bondStateName==='function') ? bondStateName(r.bond) : '';
     const emoji=relEmoji(r);
     const isRomantic = (r.kind==='Spouse'||r.kind==='Partner') && r.alive;
     const isPeer = /Brother|Sister|Sibling|Friend|Spouse|Partner|Child/.test(r.kind) && r.alive;
+    // shared-interest icons (max 3)
+    let shareIcons='';
+    if(r.alive && typeof sharedInterests==='function'){
+      const sh=sharedInterests(p, r).slice(0,3).map(k=>{ const m=interestMeta(k); return m?m.e:''; }).join('');
+      if(sh) shareIcons=`<span style="margin-left:6px;font-size:11px">${sh}</span>`;
+    }
     html+=`<div class="rel ${r.alive?'':'dead'}">
       <div class="av">${emoji}</div>
-      <div class="rinfo"><div class="rn">${r.name}</div><div class="rd">${r.kind}${r.note?' · '+r.note:''}${r.alive?'':' · passed'}</div>
+      <div class="rinfo"><div class="rn">${r.name}${shareIcons}</div><div class="rd">${r.kind}${r.note?' · '+r.note:''}${r.alive?(stateName?' · '+stateName:''):' · passed'}</div>
       ${r.alive?`<div class="rbar"><i style="width:${r.bond}%;background:var(--${col.slice(2)})"></i></div>`:''}</div>
       ${r.alive?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="time">Spend<br>time</button>`:''}
       ${isPeer?`<button class="act" style="width:auto;padding:8px 10px;font-size:11px" data-i="${i}" data-act="interact">More…</button>`:''}
@@ -77,7 +87,10 @@ function openRelations(){
   html+=`</div>`;
   sheet(html, sh=>{
     sh.querySelectorAll('[data-act="time"]').forEach(b=>b.onclick=()=>{
-      const r=rels[+b.dataset.i]; r.bond=clamp(r.bond+8+rnd(8)); p.stats.happy=clamp(p.stats.happy+3);
+      const r=rels[+b.dataset.i];
+      if(typeof applyBond==='function'){ applyBond(r, 8+rnd(8)); markInteract(r,'time'); }
+      else { r.bond=clamp(r.bond+8+rnd(8)); }
+      p.stats.happy=clamp(p.stats.happy+3);
       closeSheet(); log(`${p.first} spent time with ${r.name.split(' ')[0]}. They grew closer.`,'good'); render();
     });
     sh.querySelectorAll('[data-act="leave"]').forEach(b=>b.onclick=()=>{

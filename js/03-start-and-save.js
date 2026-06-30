@@ -29,6 +29,8 @@ function migrate(){
   if(G.awareness==null) G.awareness=0;
   if(G.sycophant==null) G.sycophant=0;
   if(!G.country) G.country=(G.hometown||'').split(', ')[1]||null;
+  // power transfusion: promote old per-character flag to bloodline-level unlock
+  if(!G.transfusionUnlocked){ G.people.forEach(px=>{ if(px.flags&&px.flags.transfusionResearch) G.transfusionUnlocked=true; }); }
   G.people.forEach(p=>{
     if(!p.portfolio) p.portfolio={low:0,med:0,high:0};
     if(!p.businesses) p.businesses=[];
@@ -85,6 +87,12 @@ function migrate(){
     if(p.prisonRole===undefined) p.prisonRole=null;
     if(p.prisonYears==null) p.prisonYears=0;
     if(!p.bday) p.bday={m:rnd(12),day:1+rnd(28)};
+    // relationships system (module 36): interests + support-energy bookkeeping.
+    // Per-rel metadata (r._m) is created lazily by relMeta(), so no per-rel backfill needed.
+    if(!p.interests && typeof ensureInterests==='function') ensureInterests(p);
+    if(p._supportUsed==null) p._supportUsed=0;
+    if(p._supportYear==null) p._supportYear=0;
+    if(p._relYear==null) p._relYear=0;
     // recover any balance corrupted to NaN/Infinity by older versions, and enforce the cap
     p.money = clampMoney(p.money);
     if(p.salary!=null && !Number.isFinite(Number(p.salary))) p.salary = 0;

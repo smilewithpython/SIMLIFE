@@ -111,14 +111,16 @@ function pickFightBeats(p, count){
 // helper: render a multi-paragraph cinematic screen with a single continue button
 function cinemaScreen(title, emoji, paragraphs, btnLabel, onClose, accent){
   const body=paragraphs.map(t=>`<p style="color:var(--ink-dim);font-size:14px;line-height:1.65;margin:0 0 12px">${t}</p>`).join('');
-  const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:left;max-height:calc(100vh - 36px);overflow-y:auto">
+  const scrim=document.createElement('div');
+  scrim.className='scrim center';
+  scrim.innerHTML=`<div class="cmodal">
     <div style="text-align:center;font-size:50px;margin:6px 0">${emoji}</div>
     <h2 style="text-align:center;color:${accent||'var(--gold)'};margin:0 0 12px">${title}</h2>
     ${body}
     <button class="btn" id="cinClose" style="margin-top:8px;${accent?`background:${accent};color:#1a1208`:''}">${btnLabel}</button>
-  </div></div>`;
-  const wrap=document.createElement('div'); wrap.innerHTML=html; document.body.appendChild(wrap.firstChild);
-  const btn=document.querySelector('#cinClose'); if(btn) btn.onclick=()=>{ const m=document.querySelector('.cmodal'); if(m)m.remove(); if(onClose)onClose(); };
+  </div>`;
+  root.appendChild(scrim);
+  const btn=scrim.querySelector('#cinClose'); if(btn) btn.onclick=()=>{ scrim.remove(); if(onClose)onClose(); };
 }
 // ===== THE PREMATURE CHALLENGE — six tiers, always fatal, always informative =====
 function prematureChallenge(p){
@@ -394,20 +396,24 @@ function homelanderEndingScreen(p, mode, reward, paras, surviving){
   const accent=mode==='device'?'var(--blood)':'var(--gold)';
   const emoji=mode==='kill'?'🏆':mode==='imprison'?'🔒':mode==='expose'?'📡':'☢️';
   const body=paras.map(t=>`<p style="color:var(--ink-dim);font-size:14px;line-height:1.65;margin:0 0 12px">${t}</p>`).join('');
-  const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:left;max-height:calc(100vh - 36px);overflow-y:auto">
+  const scrim=document.createElement('div');
+  scrim.className='scrim center';
+  scrim.innerHTML=`<div class="cmodal">
     <div style="text-align:center;font-size:54px;margin:6px 0">${emoji}</div>
     <h2 style="text-align:center;color:${accent};margin:0 0 4px">HOMELANDER ${mode==='kill'?'KILLED':mode==='imprison'?'IMPRISONED':mode==='expose'?'EXPOSED':'DESTROYED'}</h2>
     <p style="text-align:center;color:var(--ink-faint);font-size:12px;margin:0 0 14px">Reward: ${money(reward)} · Defeated ${G.homelandersBeaten}× by this bloodline</p>
     ${body}
     <button class="btn" id="endClose" style="margin-top:8px;background:${accent};color:#1a1208">Carry on the bloodline</button>
-  </div></div>`;
-  const wrap=document.createElement('div'); wrap.innerHTML=html; document.body.appendChild(wrap.firstChild);
-  const btn=document.querySelector('#endClose'); if(btn) btn.onclick=()=>{ const m=document.querySelector('.cmodal'); if(m)m.remove();
+  </div>`;
+  root.appendChild(scrim);
+  const btn=scrim.querySelector('#endClose'); if(btn) btn.onclick=()=>{ scrim.remove();
     if(!surviving){ p._causeOfDeath='gave their life to destroy Homelander with the Device'; die(p); }
     render(); };
 }
 function homelanderVictoryScreen(p, reward, optCount){
-  const html=`<div class="cmodal"><div class="cmodal-inner" style="text-align:center">
+  const scrim=document.createElement('div');
+  scrim.className='scrim center';
+  scrim.innerHTML=`<div class="cmodal" style="text-align:center">
     <div style="font-size:60px;margin:10px 0">🏆</div>
     <h2 style="color:var(--gold);margin:0 0 6px">HOMELANDER DEFEATED</h2>
     <p style="color:var(--ink-dim);font-size:15px;line-height:1.6;padding:0 10px">
@@ -422,9 +428,9 @@ function homelanderVictoryScreen(p, reward, optCount){
       Life goes on; there are still careers to build, families to raise, and a legacy to leave.
     </p>
     <button class="btn" id="vicClose" style="margin-top:14px;background:linear-gradient(90deg,var(--blood),var(--gold));color:#1a1208">Carry on the bloodline</button>
-  </div></div>`;
-  const wrap=document.createElement('div'); wrap.innerHTML=html; document.body.appendChild(wrap.firstChild);
-  const btn=document.querySelector('#vicClose'); if(btn) btn.onclick=()=>{ const m=document.querySelector('.cmodal'); if(m)m.remove(); render(); };
+  </div>`;
+  root.appendChild(scrim);
+  const btn=scrim.querySelector('#vicClose'); if(btn) btn.onclick=()=>{ scrim.remove(); render(); };
 }
 function openHistory(p){
   closeSheet();
