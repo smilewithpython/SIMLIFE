@@ -224,7 +224,7 @@ const POWERS=[
   'telekinesis','technopathy','time manipulation','dimensional pocket','astral projection','cosmic awareness'
 ];
 const TOTAL_POWERS = POWERS.length; // 50 — the bloodline must acquire them all to beat Homelander
-const POWERS_PER_GEN = 3; // max new powers one character can gain in their lifetime
+const POWERS_PER_GEN = 4; // max new powers one character can gain in their lifetime
 // Power rarity (affects how readily events grant them)
 const POWER_RARITY = {
   'super strength':'common','super speed':'common','regeneration':'common','elemental control':'common',

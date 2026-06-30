@@ -211,7 +211,7 @@ function runYear(){
     if(p.pension>0) income+=p.pension;
     // Social Security kicks in at 65 (or earlier if claimed); scales with career length
     if(p.age>=65 || p.claimedSS){
-      const ss=Math.round(Math.min(45000, 12000 + (p.careerYears||0)*700) * (p.claimedSS&&p.age<65?0.7:1));
+      const ss=Math.round(Math.min(45000, 12000+ (p.careerYears||0)*700) * (p.claimedSS&&p.age<65?0.7:1));
       income+=ss;
     }
     if(income>0){ p.money+=income; }
