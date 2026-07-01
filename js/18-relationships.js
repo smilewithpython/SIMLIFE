@@ -188,7 +188,7 @@ function doFling(p){
 
 // ===== INTIMACY & PREGNANCY =====
 // Can this character carry a pregnancy themselves? (females under 50). Otherwise their partner may.
-function canCarry(p){ return p.sex==='f' && p.age<=49; }
+function canCarry(p){ return p.sex==='f' && p.age<=80; }
 function partnerCanCarry(p, mate){
   // mate is a rels entry; female partner under ~49 can carry
   return mate && mate.sex==='f';

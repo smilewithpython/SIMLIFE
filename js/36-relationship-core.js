@@ -72,7 +72,7 @@ function decayRate(p, r){
       return 6;
     case r.kind==='Friend': {
       // close friends decay slower than casual ones
-      return r.bond>=55 ? 8 : 12;
+      return r.bond>=55 ? 8: 12;
     }
     default: return 6;
   }
@@ -136,7 +136,7 @@ function seedChildInterests(child, parent, mate){
 // "Being everyone's support system is exhausting." 2 full-value support actions/year.
 function supportEnergyLeft(p){
   if(p._supportYear!==G.year){ p._supportYear=G.year; p._supportUsed=0; }
-  return Math.max(0, 2 - (p._supportUsed||0));
+  return Math.max(0, 2- (p._supportUsed||0));
 }
 function spendSupportEnergy(p){
   if(p._supportYear!==G.year){ p._supportYear=G.year; p._supportUsed=0; }
