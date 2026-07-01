@@ -4,5 +4,5 @@
    ============================================================ */
 
 // ──── Custom careers ────
-CAREERS.push({k:'mod_job_serial_killer', l:'Serial killer', emoji:'🩸', edu:0, base:105000, grow:4200, stat:'health', danger:true, crime:true});
+CAREERS.push({k:'mod_job_serial_killer', l:'Serial killer', emoji:'🩸', edu:0, base:135000, grow:42000, stat:'health', danger:true, crime:true});
 

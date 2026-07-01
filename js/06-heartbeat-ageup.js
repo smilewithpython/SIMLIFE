@@ -211,7 +211,7 @@ function runYear(){
     if(p.pension>0) income+=p.pension;
     // Social Security kicks in at 65 (or earlier if claimed); scales with career length
     if(p.age>=65 || p.claimedSS){
-      const ss=Math.round(Math.min(45000, 12000+ (p.careerYears||0)*700) * (p.claimedSS&&p.age<65?0.7:1));
+      const ss=Math.round(Math.min(45000, 12000 + (p.careerYears||0)*700) * (p.claimedSS&&p.age<65?0.7:1));
       income+=ss;
     }
     if(income>0){ p.money+=income; }
@@ -224,7 +224,7 @@ function runYear(){
 
   // BLOODLINE POWERS: a descendant born with inherited powers may manifest a new latent ability
   // as they grow (automatic path toward the 2-per-generation cap). Events provide the rest.
-  if(p.powers && p.powers.length>0 && (p.powersGained||0)<POWERS_PER_GEN && p.powers.length<TOTAL_POWERS && p.age>=8 && chance(8)){
+  if(p.powers && p.powers.length>0 && (p.powersGained||0)<POWERS_PER_GEN && p.powers.length<TOTAL_POWERS && p.age>=8 && chance(7)){
     const pow=grantPower(p);
     if(pow) log(`${p.first}'s inherited bloodline awakened a new power: ${pow}.`,'big');
   }
