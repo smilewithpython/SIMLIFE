@@ -74,16 +74,15 @@ const CAREERS=[
       {t:'World Champion',  mult:34,  years:3, req:88, fame:30},
       {t:'Hall of Famer',   mult:20,  years:5, req:90, fame:12},
     ]},
-  {k:'moviestar', l:'Actor → Movie Star', emoji:'🎬', edu:0, base:18000, keyStat:'looks', staged:true,
-    stages:[
-      {t:'Background Extra', mult:1,   years:0, req:0,  fame:1},
-      {t:'Commercial Actor', mult:2,   years:2, req:48, fame:3},
-      {t:'TV Series Regular',mult:5,   years:3, req:58, fame:8},
-      {t:'Supporting Film',  mult:12,  years:3, req:66, fame:15},
-      {t:'Leading Role',     mult:28,  years:3, req:74, fame:26},
-      {t:'A-List Movie Star',mult:60,  years:4, req:82, fame:45},
-      {t:'Oscar Winner',     mult:75,  years:4, req:88, fame:60},
-    ]},
+  {k:'moviestar', l:'Actor → Movie Star', emoji:'🎬', edu:0, base:24000, keyStat:'looks', staged:true, stages:[
+    {t:'Background Extra',mult:1.0,years:0,req:0,fame:1},
+    {t:'Commercial Actor',mult:2.0,years:2,req:48,fame:3},
+    {t:'TV Series Regular',mult:5.0,years:3,req:58,fame:8},
+    {t:'Supporting Film',mult:12.0,years:3,req:66,fame:15},
+    {t:'Leading Role',mult:28.0,years:3,req:74,fame:26},
+    {t:'A-List Movie Star',mult:60.0,years:4,req:82,fame:45},
+    {t:'Oscar Winner',mult:75.0,years:4,req:88,fame:60}
+  ]},
   {k:'tech', l:'Tech / IT', emoji:'💻', edu:1, base:52000, keyStat:'smarts', staged:true,
     stages:[
       {t:'Help Desk',        mult:1,    years:0, req:0,  fame:0},
