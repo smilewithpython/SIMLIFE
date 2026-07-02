@@ -18,7 +18,7 @@ const CAREER_CHOICES = {
   ],
   wwe: (p)=>[
     O('🎭','Develop a new gimmick','+fame',0,()=>{ closeSheet(); if(chance(60)){ p.stats.fame=clamp(p.stats.fame+12); log(`${p.first}'s new character is over with the crowd. Merch is flying.`,'good'); } else { p.stats.fame=clamp(p.stats.fame-2); log(`The new gimmick flopped. Back to the drawing board.`,'muted'); } render(); }),
-    O('💉','Take steroids','+physique, risky',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+10); p.stats.looks=clamp(p.stats.looks+4); if(!(p.stats.smarts>65)&&chance(35)){ p.record.push('Wellness policy violation'); p.stats.fame=clamp(p.stats.fame-10); log(`${p.first} got popped for the wellness policy. Suspended.`,'bad'); } else { setFlag(p,'juicing'); log(`${p.first} bulked up fast on a quiet cycle.`,'muted'); } render(); }),
+    O('💉','Take steroids','+physique, risky',0,()=>{ closeSheet(); p.stats.athletic=clamp(p.stats.athletic+22); p.stats.fame=clamp(p.stats.fame+22); p.stats.looks=clamp(p.stats.looks+4); setFlag(p,'juicing'); if(chance(96)){ log(`${p.first} bulked up fast on a quiet cycle.`,'good'); } else { log(`${p.first} got popped for the wellness policy. Suspended.`,'bad'); } render(); }),
     O('🩹','Wrestle through an injury','+respect, −health',0,()=>{ closeSheet(); p.stats.health=clamp(p.stats.health-10); p.stats.fame=clamp(p.stats.fame+6); log(`${p.first} refused to miss the show, working hurt. The locker room respects it.`,'good'); render(); })
   ],
   boxer: (p)=>[
